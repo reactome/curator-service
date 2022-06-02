@@ -8,9 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.reactome.server.graph.curator.domain.model.Event;
 import org.reactome.server.graph.curator.domain.model.Pathway;
-import org.reactome.server.graph.curator.domain.model.TopLevelPathway;
 import org.reactome.server.graph.curator.domain.result.SimpleDatabaseObject;
-import org.reactome.server.graph.curator.service.TopLevelPathwayService;
 import org.reactome.server.service.controller.graph.util.ControllerUtils;
 import org.reactome.server.service.exception.NotFoundException;
 import org.reactome.server.service.exception.NotFoundTextPlainException;
@@ -37,9 +35,6 @@ import java.util.stream.Collectors;
 public class PathwaysController {
 
     private static final Logger infoLogger = LoggerFactory.getLogger("infoLogger");
-
-    @Autowired
-    private TopLevelPathwayService topLevelPathwayService;
 
     @Operation(
             summary = "All the events contained in the given event",
@@ -75,25 +70,6 @@ public class PathwaysController {
             throw new NotFoundTextPlainException("No contained events found in the given event: " + id);
         infoLogger.info("Request for contained events of event with id: {}", id);
         return ControllerUtils.getProperties(containedEvents, attributeName).toString();
-    }
-
-    @Operation(
-            summary = "All Reactome top level pathways",
-            description = "This method retrieves the list of top level pathways for the given species"
-    )
-    @ApiResponses({
-            @ApiResponse(responseCode = "404", description = "No TopLevelPathways were found for species"),
-            @ApiResponse(responseCode = "500", description = "Internal Server Error")
-    })
-    @RequestMapping(value = "/pathways/top/{species:.+}", method = RequestMethod.GET, produces = "application/json")
-    @ResponseBody
-    public Collection<? extends Pathway> getTopLevelPathways(@Parameter(description = "Specifies the species by the taxonomy identifier (eg: 9606) or species name (eg: 'Homo+sapiens')", example = "9606", required = true)
-                                                             @PathVariable String species) throws UnsupportedEncodingException {
-        Collection<TopLevelPathway> rtn = topLevelPathwayService.getTopLevelPathways(URLDecoder.decode(species, "UTF-8"));
-        if (rtn == null || rtn.isEmpty())
-            throw new NotFoundException("No TopLevelPathways were found for species: " + species);
-        infoLogger.info("Request for toplevelpathways with species: {}", species);
-        return rtn;
     }
 
     @Operation(
@@ -216,17 +192,5 @@ public class PathwaysController {
             throw new NotFoundException("No entities with identifier '" + identifier + "' found for " + pathwayId + (pathways != null ? " nor for pathways " + pathways : ""));
         infoLogger.info("Request for all entities in diagram with identifier: {}", identifier);
         return rtn;
-    }
-
-    @Hidden
-    @Operation(summary = "All Reactome top level pathways", description = "This method retrieves a list containing only curated top level pathways for the given species")
-    @RequestMapping(value = "/pathways/top/{species}/curated", method = RequestMethod.GET, produces = "application/json")
-    @ResponseBody
-    public Collection<? extends Pathway> getCuratedTopLevelPathways(@Parameter(description = "Specifies the species by SpeciesName (eg: Homo sapiens) or SpeciesTaxId (eg: 9606)", example = "9606") @PathVariable String species) {
-        Collection<TopLevelPathway> topLevelPathways = topLevelPathwayService.getCuratedTopLevelPathways(species);
-        if (topLevelPathways == null || topLevelPathways.isEmpty())
-            throw new NotFoundException("No TopLevelPathways were found for species: " + species);
-        infoLogger.info("Request for curated toplevelpathways with species: {}", species);
-        return topLevelPathways;
     }
 }

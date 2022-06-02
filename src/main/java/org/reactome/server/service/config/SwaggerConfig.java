@@ -35,7 +35,7 @@ public class SwaggerConfig {
                 .addServersItem(new Server().url(context.getContextPath()))
                 .info(new Info()
                         .title("curator-service")
-                        .description("REST API for Reactome content")
+                        .description("Curator REST API for Neo4J")
                         .version("1.2")
                         .license(new License()
                                 .name("Creative Commons Attribution 4.0 International (CC BY 4.0) License")

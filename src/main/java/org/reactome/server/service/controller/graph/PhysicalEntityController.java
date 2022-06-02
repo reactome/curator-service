@@ -64,22 +64,6 @@ public class PhysicalEntityController {
         return physicalEntities;
     }
 
-    @Operation(summary = "A list of larger structures containing the entity", description = "Retrieves the list of structures (Complexes and Sets) that include the given entity as their component. It should be mentioned that the list includes only simplified entries (type, names, ids) and not full information about each item.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "404", description = "Identifier does not match with any in current data"),
-            @ApiResponse(responseCode = "406", description = "Not acceptable according to the accept headers sent in the request"),
-            @ApiResponse(responseCode = "500", description = "Internal Server Error")
-    })
-    @RequestMapping(value = "/entity/{id}/componentOf", method = RequestMethod.GET, produces = "application/json")
-    @ResponseBody
-    public Collection<ComponentOf> getComponentsOf(@Parameter(example = "R-HSA-199420", required = true) @PathVariable String id) {
-        Collection<ComponentOf> componentOfs = advancedLinkageService.getComponentsOf(id);
-        if (componentOfs == null || componentOfs.isEmpty())
-            throw new NotFoundException("Id: " + id + " has not been found in the System");
-        infoLogger.info("Request for all components of Entry with id: {}", id);
-        return componentOfs;
-    }
-
     @Operation(
             summary = "A list with the entities contained in a given complex",
             description = "Retrieves the list of subunits that constitute any given complex. In case the complex comprises other complexes, this method recursively traverses the content returning each contained PhysicalEntity. Contained complexes and entity sets can be excluded setting the 'excludeStructures' optional parameter to 'true'"
