@@ -38,9 +38,9 @@ public class OrthologyController {
     })
     @RequestMapping(value = "/orthology/{id}/species/{speciesId}", method = RequestMethod.GET, produces = "application/json")
     @ResponseBody
-    public DatabaseObject getOrthology(@Parameter(description = "The event for which the orthology is requested", example = "R-HSA-6799198", required = true)
+    public DatabaseObject getOrthology(@Parameter(description = "The event for which the orthology is requested", example = "R-HSA-2993769", required = true)
                                        @PathVariable String id,
-                                       @Parameter(description = "The species for which the orthology is requested", example = "49633", required = true)
+                                       @Parameter(description = "The species for which the orthology is requested", example = "48887", required = true)
                                        @PathVariable Long speciesId) {
         Collection<DatabaseObject> orthology = orthologyService.getOrthology(id, speciesId);
         if (orthology == null) throw new NotFoundException("No orthology found for '" + id + "' in species '" + speciesId + "'");
@@ -56,7 +56,7 @@ public class OrthologyController {
     })
     @RequestMapping(value = "/orthologies/ids/species/{speciesId}", method = RequestMethod.POST, consumes = "text/plain", produces = "application/json")
     @ResponseBody
-    public Map<Object, DatabaseObject> getOrthologies(@Parameter(description = "The species for which the orthology is requested", example = "49633", required = true)
+    public Map<Object, DatabaseObject> getOrthologies(@Parameter(description = "The species for which the orthology is requested", example = "48887", required = true)
                                                       @PathVariable Long speciesId,
                                                       @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "The <b>events</b> or <b>entities</b> for which the orthology is requested", required = true)
                                                       @RequestBody String post) {

@@ -72,7 +72,7 @@ public class QueryObjectController {
     @ResponseBody
     public String findById(@Parameter(description = "DbId or StId of the requested database object", example = "R-HSA-1640170", required = true)
                            @PathVariable String id,
-                           @Parameter(description = "Attribute to be filtered", example = "displayName", required = true)
+                           @Parameter(description = "Attribute to be filtered", example = "_displayName", required = true)
                            @PathVariable String attributeName) throws InvocationTargetException, IllegalAccessException {
         DatabaseObject databaseObject = advancedDatabaseObjectService.findById(id, RelationshipDirection.OUTGOING);
         if (databaseObject == null)
@@ -172,7 +172,7 @@ public class QueryObjectController {
     @ResponseBody
     public String findByIdNoRelations(@Parameter(description = "DbId or StId of the requested database object", example = "R-HSA-1640170", required = true)
                                       @PathVariable String id,
-                                      @Parameter(description = "Attribute to be filtered", example = "displayName", required = true)
+                                      @Parameter(description = "Attribute to be filtered", example = "_displayName", required = true)
                                       @PathVariable String attributeName) throws InvocationTargetException, IllegalAccessException {
         DatabaseObject databaseObject = databaseObjectService.findByIdNoRelations(id);
         if (databaseObject == null)

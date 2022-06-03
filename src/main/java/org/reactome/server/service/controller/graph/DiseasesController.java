@@ -53,7 +53,10 @@ public class DiseasesController {
     @ResponseBody
     public String getDiseasesSummary() {
         infoLogger.info("Request for all diseases");
-        List<String> diseases = schemaService.getByClass(Disease.class).stream().map(d -> d.getDB_ID() + "\t" + d.getReferenceDatabase().getName() + ":" + d.getIdentifier()).collect(Collectors.toList());
+        List<String> diseases = schemaService.getByClass(Disease.class).stream().map(
+                d -> d.getDB_ID() + "\t" +
+                        (d.getReferenceDatabase() != null ? d.getReferenceDatabase().getName() : null) + ":" +
+                        d.getIdentifier()).collect(Collectors.toList());
         return String.join("\n", diseases);
     }
 }

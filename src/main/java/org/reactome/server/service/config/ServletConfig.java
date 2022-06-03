@@ -36,7 +36,6 @@ public class ServletConfig {
     public ServletRegistrationBean<ProxyServlet> mediaServletBean() {
         ServletRegistrationBean<ProxyServlet> bean = new ServletRegistrationBean<>(new ProxyServlet(), "/media/*");
         bean.setName("Media");
-        System.out.println(this.proxyHost); // TODO: &&&&
         bean.setInitParameters(Map.of(
                 "proxyHost", this.proxyHost,
                 "proxyPort", "80",

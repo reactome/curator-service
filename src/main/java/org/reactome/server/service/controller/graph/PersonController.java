@@ -74,14 +74,14 @@ public class PersonController {
     }
 
     //ToDo in regards to data privacy, should this not be removed or restricted? emails have been removed, is this enough
-    @Operation(summary = "A person by his/her identifier", description = "Retrieves a person in Reactome by his/her OrcidId or DbId.")
+    @Operation(summary = "A person by his/her identifier", description = "Retrieves a person in Reactome by his/her DbId.")
     @ApiResponses({
-            @ApiResponse(responseCode = "404", description = "OrcidId or DbId does not match with any in current data"),
+            @ApiResponse(responseCode = "404", description = "DbId does not match with any in current data"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @RequestMapping(value = "/person/{id}", method = RequestMethod.GET, produces = "application/json")
     @ResponseBody
-    public Person findPerson(@Parameter(description = "Person identifier: Can be OrcidId or DbId", example = "0000-0001-5807-0069", required = true) @PathVariable String id) {
+    public Person findPerson(@Parameter(description = "Person identifier: DbId", example = "140934", required = true) @PathVariable String id) {
         Person person = personService.findPerson(id);
         if (person == null) throw new NotFoundException("No person found for id: " + id);
         infoLogger.info("Request for person with id: {}", id);
@@ -89,16 +89,17 @@ public class PersonController {
     }
 
     //ToDo in regards to data privacy, should this not be removed or restricted? emails have been removed, is this enough
-    @Operation(summary = "A person's property by his/her identifier", description = "Retrieves a specific person's property by his/her OrcidId or DbId.")
+    @Operation(summary = "A person's property by his/her identifier", description = "Retrieves a specific person's property by his/her DbId.")
     @ApiResponses({
-            @ApiResponse(responseCode = "404", description = "OrcidId or DbId does not match with any in current data or invalid attribute name"),
+            @ApiResponse(responseCode = "404", description = "" +
+                    "DbId does not match with any in current data or invalid attribute name"),
             @ApiResponse(responseCode = "406", description = "Not acceptable according to the accept headers sent in the request"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @RequestMapping(value = "/person/{id}/{attributeName}", method = RequestMethod.GET, produces = "text/plain")
     @ResponseBody
-    public String findPerson(@Parameter(description = "Person identifier: Can be OrcidId or DbId", example = "0000-0001-5807-0069", required = true) @PathVariable String id,
-                             @Parameter(description = "Attribute to be filtered", example = "displayName", required = true) @PathVariable String attributeName) throws InvocationTargetException, IllegalAccessException {
+    public String findPerson(@Parameter(description = "Person identifier: Can be DbId", example = "140934", required = true) @PathVariable String id,
+                             @Parameter(description = "Attribute to be filtered", example = "_displayName", required = true) @PathVariable String attributeName) throws InvocationTargetException, IllegalAccessException {
         Person person = personService.findPerson(id);
         if (person == null) throw new NotFoundTextPlainException("No person found for id: " + id);
         infoLogger.info("Request for person with id: {}", id);
@@ -107,16 +108,16 @@ public class PersonController {
 
     @Operation(
             summary = "A list of publications authored by a given person",
-            description = "Retrieves a list of publications authored by a given person. OrcidId, DbId or Email can be used to specify the person."
+            description = "Retrieves a list of publications authored by a given person. DbId or Email can be used to specify the person."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "404", description = "OrcidId or DbId does not match with any publication"),
+            @ApiResponse(responseCode = "404", description = "DbId does not match with any publication"),
             @ApiResponse(responseCode = "406", description = "Not acceptable according to the accept headers sent in the request"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @RequestMapping(value = "/person/{id}/publications", method = RequestMethod.GET, produces = "application/json")
     @ResponseBody
-    public Collection<Publication> getPublicationsOfPerson(@Parameter(description = "Person identifier: Can be OrcidId or DbId", example = "0000-0001-5807-0069", required = true) @PathVariable String id) {
+    public Collection<Publication> getPublicationsOfPerson(@Parameter(description = "Person identifier: Can be DbId", example = "140934", required = true) @PathVariable String id) {
         Collection<Publication> publications = personService.getPublicationsOfPerson(id);
         infoLogger.info("Request for all publications of person with id: {}", id);
         return publications;
@@ -124,16 +125,16 @@ public class PersonController {
 
     @Operation(
             summary = "A list of pathways authored by a given person",
-            description = "Retrieves a list of pathways authored by a given person. OrcidId, DbId or Email can be used to specify the person."
+            description = "Retrieves a list of pathways authored by a given person. DbId or Email can be used to specify the person."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "404", description = "OrcidId or DbId does not retrieve any pathway"),
+            @ApiResponse(responseCode = "404", description = "DbId does not retrieve any pathway"),
             @ApiResponse(responseCode = "406", description = "Not acceptable according to the accept headers sent in the request"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @RequestMapping(value = "/person/{id}/authoredPathways", method = RequestMethod.GET, produces = "application/json")
     @ResponseBody
-    public Collection<SimpleEventProjection> getAuthoredPathways(@Parameter(description = "Person identifier: Can be OrcidId or DbId", example = "0000-0001-5807-0069", required = true) @PathVariable String id) {
+    public Collection<SimpleEventProjection> getAuthoredPathways(@Parameter(description = "Person identifier: Can be DbId", example = "140934", required = true) @PathVariable String id) {
         Collection<SimpleEventProjection> pathways = personService.getAuthoredPathways(id);
         infoLogger.info("Request for all authored pathways of person with id: {}", id);
         return pathways;

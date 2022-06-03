@@ -105,7 +105,7 @@ public class PhysicalEntityController {
     @ResponseBody
     public Collection<Complex> getComplexesFor(@Parameter(description = "The resource of the identifier for complexes are requested", example = "UniProt", required = true)
                                                @PathVariable String resource,
-                                               @Parameter(description = "The identifier for which complexes are requested", example = "P00533", required = true)
+                                               @Parameter(description = "The identifier for which complexes are requested", example = "P49810", required = true)
                                                @PathVariable String identifier) {
         Collection<Complex> complexes = physicalEntityService.getComplexesFor(identifier, resource);
         if (complexes.isEmpty())
