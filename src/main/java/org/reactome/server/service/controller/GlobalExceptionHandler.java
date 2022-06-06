@@ -80,52 +80,8 @@ class GlobalExceptionHandler {
     }
 
     //================================================================================
-    // SOLR
-    //================================================================================
-
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    @ExceptionHandler(SolrSearcherException.class)
-    @ResponseBody
-    ResponseEntity<String> handleSolrException(HttpServletRequest request, SolrSearcherException e) {
-        logger.error("Solr exception was caught for request: " + request.getRequestURL(), e);
-        return toJsonResponse(HttpStatus.INTERNAL_SERVER_ERROR, request, e.getMessage());
-    }
-
-    //================================================================================
     // Interactors
     //================================================================================
-
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    @ExceptionHandler(StaticInteractionException.class)
-    @ResponseBody
-    ResponseEntity<String> handleStaticInteractionException(HttpServletRequest request, StaticInteractionException e) {
-        logger.warn("StaticInteractionException was caught for request: " + request.getRequestURL());
-        return toJsonResponse(HttpStatus.INTERNAL_SERVER_ERROR, request, e.getMessage());
-    }
-
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    @ExceptionHandler(PsicquicContentException.class)
-    @ResponseBody
-    ResponseEntity<String> handlePsicquicContentException(HttpServletRequest request, PsicquicContentException e) {
-        logger.warn("PsicquicContentException was caught for request: " + request.getRequestURL());
-        return toJsonResponse(HttpStatus.INTERNAL_SERVER_ERROR, request, e.getMessage());
-    }
-
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    @ExceptionHandler(InteractorResourceNotFound.class)
-    @ResponseBody
-    ResponseEntity<String> handleInteractorResourceNotFound(HttpServletRequest request, InteractorResourceNotFound e) {
-        logger.warn("InteractorResourceNotFound was caught for request: " + request.getRequestURL());
-        return toJsonResponse(HttpStatus.NOT_FOUND, request, e.getMessage());
-    }
-
-    @ResponseStatus(HttpStatus.REQUEST_HEADER_FIELDS_TOO_LARGE)
-    @ExceptionHandler(RequestEntityTooLargeException.class)
-    @ResponseBody
-    ResponseEntity<String> handleRequestEntityTooLargeException(HttpServletRequest request, RequestEntityTooLargeException e) {
-        logger.warn("RequestEntityTooLargeException was caught for request: " + request.getRequestURL());
-        return toJsonResponse(HttpStatus.REQUEST_HEADER_FIELDS_TOO_LARGE, request, e.getMessage());
-    }
 
     @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
     @ExceptionHandler(UnprocessableEntityException.class)
@@ -133,22 +89,6 @@ class GlobalExceptionHandler {
     ResponseEntity<String> handleUnprocessableEntityException(HttpServletRequest request, UnprocessableEntityException e) {
         logger.warn("UnprocessableEntityException was caught for request: " + request.getRequestURL());
         return toJsonResponse(HttpStatus.UNPROCESSABLE_ENTITY, request, e.getMessage());
-    }
-
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    @ExceptionHandler(TokenNotFoundException.class)
-    @ResponseBody
-    ResponseEntity<String> handleTokenNotFoundException(HttpServletRequest request, TokenNotFoundException e) {
-        logger.warn("TokenNotFoundException was caught for request: " + request.getRequestURL());
-        return toJsonResponse(HttpStatus.NOT_FOUND, request, e.getMessage());
-    }
-
-    @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
-    @ExceptionHandler(UnsupportedMediaTypeException.class)
-    @ResponseBody
-    ResponseEntity<String> handleUnsupportedMediaTypeException(HttpServletRequest request, UnsupportedMediaTypeException e) {
-        logger.warn("UnsupportedMediaTypeException was caught for request: " + request.getRequestURL());
-        return toJsonResponse(HttpStatus.UNSUPPORTED_MEDIA_TYPE, request, e.getMessage());
     }
 
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
