@@ -16,14 +16,14 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EntityScan({"org.reactome.server.graph.curator.domain.model"})
 @EnableNeo4jRepositories("org.reactome.server.graph.curator.repository")
 @SpringBootApplication(scanBasePackages = {"org.reactome.server"})
-public class ContentServiceApplication extends SpringBootServletInitializer {
+public class CuratorServiceApplication extends SpringBootServletInitializer {
 
     @Override
     protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
-        return builder.sources(ContentServiceApplication.class);
+        return builder.sources(CuratorServiceApplication.class);
     }
 
     public static void main(String[] args) {
-        SpringApplication.run(ContentServiceApplication.class, args);
+        SpringApplication.run(CuratorServiceApplication.class, args);
     }
 }
