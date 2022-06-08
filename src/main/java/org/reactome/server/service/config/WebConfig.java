@@ -3,6 +3,7 @@ package org.reactome.server.service.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.reactome.server.service.persistence.Neo4JAdaptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +16,7 @@ import org.springframework.web.multipart.commons.CommonsMultipartResolver;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -81,5 +83,12 @@ public class WebConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/META-INF/resources/");
         registry.addResourceHandler("/webjars/**")
                 .addResourceLocations("classpath:/META-INF/resources/webjars/");
+    }
+
+    @Bean
+    public Neo4JAdaptor neo4JAdaptor(@Value("${neo4j.uri}") String neo4JUri,
+                                 @Value("${neo4j.user}") String neo4JUser,
+                                 @Value("${neo4j.password}") String neo4JPassword) {
+        return new Neo4JAdaptor(neo4JUri, neo4JUser, neo4JPassword);
     }
 }

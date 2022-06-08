@@ -38,6 +38,7 @@
     </developers>
 
     <properties>
+        <neo4j.version>4.3.11</neo4j.version>
         <!-- <graph.core>2.0.3</graph.core> -->
         <search.core>1.4.5</search.core>
         <interactor.core>1.1.0</interactor.core>
@@ -79,6 +80,25 @@
     </properties>
 
     <dependencies>
+
+        <dependency>
+            <groupId>org.neo4j</groupId>
+            <artifactId>neo4j-common</artifactId>
+            <version>${neo4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.neo4j</groupId>
+            <artifactId>neo4j-kernel</artifactId>
+            <version>${neo4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.neo4j</groupId>
+            <artifactId>neo4j-graphdb-api</artifactId>
+            <version>${neo4j.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.reactome.server.graph.curator</groupId>
             <artifactId>graph-core-curator</artifactId>
