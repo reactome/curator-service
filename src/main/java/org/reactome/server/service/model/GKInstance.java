@@ -66,6 +66,10 @@ public class GKInstance implements Instance, Cloneable {
 		this.dbAdaptor = dbAdaptor;
 	}
 	
+	public Map getAttributes() {
+		return this.attributes;
+	}
+	
 	/* 
 	 * @see org.reactome.server.graph.curator.service.model.Instance#getSchemClass()
 	 */
@@ -536,6 +540,7 @@ public class GKInstance implements Instance, Cloneable {
 	/**
 	 * @return DBAdaptor object
 	 */
+	@JsonIgnore
 	public PersistenceAdaptor getDbAdaptor() {
 		return dbAdaptor;
 	}

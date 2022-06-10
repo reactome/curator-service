@@ -44,6 +44,6 @@ public interface Schema extends Serializable {
 	public boolean isValidClass(SchemaClass class1);
 	
 	public boolean isValidClassOrThrow(String name) throws InvalidClassException;
-	
+
 	public String getTimestamp();
 }
