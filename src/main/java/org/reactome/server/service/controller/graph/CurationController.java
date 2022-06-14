@@ -1,6 +1,5 @@
 package org.reactome.server.service.controller.graph;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -9,9 +8,9 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.reactome.server.service.exception.NotFoundException;
 import org.reactome.server.service.model.GKInstance;
 import org.reactome.server.service.model.Instance;
+import org.reactome.server.service.params.ExistingInstancesAttributesData;
 import org.reactome.server.service.params.FetchInstancesAttributesData;
 import org.reactome.server.service.params.LoadInstancesAttributesData;
 import org.reactome.server.service.persistence.Neo4JAdaptor;
@@ -23,7 +22,6 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * @author Florian Korninger (florian.korninger@ebi.ac.uk)
@@ -44,11 +42,33 @@ public class CurationController {
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
-    @RequestMapping(value = "/schema", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+    @RequestMapping(value = "/fetch/schema", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public Schema getSchema() {
         infoLogger.info("Request for the Schema");
         return neo4JAdaptor.getSchema();
+    }
+
+    @Operation(summary = "The release number")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/fetch/releasenumber", method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public Integer getReleaseNumber() throws Exception {
+        infoLogger.info("Request for the release number");
+        return neo4JAdaptor.getReleaseNumber();
+    }
+
+    @Operation(summary = "The Maximum DB_ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/fetch/maxdbid", method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public long getMaxDB_ID() {
+        infoLogger.info("Request for the maximum DB_ID");
+        return neo4JAdaptor.fetchMaxDbId(); // TODO: &&&& - still not working
     }
 
     @Operation(summary = "Refresh the cache")
@@ -62,6 +82,30 @@ public class CurationController {
         neo4JAdaptor.refresh();
     }
 
+    @Operation(summary = "Set the use cache flag")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/cache/use/{flag}", method = RequestMethod.GET)
+    @ResponseBody
+    public void setUseCache(@Parameter(description = "Flag", example = "true", required = true)
+                                @PathVariable String flag
+                                                                  ) {
+        infoLogger.info("Set use cache flag to the one specified");
+        neo4JAdaptor.setUseCache(Boolean.parseBoolean(flag));
+    }
+
+    @Operation(summary = "Check if cache is being used")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/cache/isused", method = RequestMethod.GET)
+    @ResponseBody
+    public Boolean isCacheUsed() {
+        infoLogger.info("Request to check if cache is being used");
+        return neo4JAdaptor.isUseCache();
+    }
+
     @Operation(summary = "Clean up cache, close connection, unset schema")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
@@ -71,6 +115,27 @@ public class CurationController {
     public void cleanUp() throws Exception {
         infoLogger.info("Request for the Schema");
         neo4JAdaptor.cleanUp();
+    }
+
+    @Operation(summary = "Return a set of DB_IDs that exist and are (or ar not - depending on inverse parameter value) in the list provided")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/fetch/existingdbids", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Collection<Long> fetchExistingDB_IDs(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, a flag to search cache, and a flag to search for intersection or disjunctive union of existing DB_Ids with the list provided",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"checkCache\" : \"true\", \"inverse\" : \"false\"}"))
+
+            )
+            @RequestBody String post) throws Exception {
+        infoLogger.info("Check if which existing DB_Ids are (or are not, depending on parameter) in the provided list");
+        ObjectMapper objectMapper = new ObjectMapper();
+        ExistingInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), ExistingInstancesAttributesData.class);
+        Set<Long> existingDB_IDs = neo4JAdaptor.existing(postData.getDbIds(), postData.getCheckCache(), postData.getInverse());
+        return existingDB_IDs;
     }
 
     @Operation(summary = "Fetch instances by Class name and, optionally, by a list of DB_IDs")
@@ -223,6 +288,4 @@ public class CurationController {
                                                                      @PathVariable String className) throws Exception {
         return Long.toString(neo4JAdaptor.getClassInstanceCount(className));
     }
-
-
 }

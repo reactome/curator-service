@@ -65,7 +65,7 @@ public class GKInstance implements Instance, Cloneable {
 		this.dbID = dbID;
 		this.dbAdaptor = dbAdaptor;
 	}
-	
+
 	public Map getAttributes() {
 		return this.attributes;
 	}
