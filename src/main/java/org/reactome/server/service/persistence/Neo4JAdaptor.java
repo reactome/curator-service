@@ -8,12 +8,16 @@ import org.neo4j.driver.Driver;
 import org.neo4j.driver.internal.value.NullValue;
 import org.neo4j.graphdb.TransactionFailureException;
 import org.neo4j.kernel.DeadlockDetectedException;
+import org.reactome.server.graph.curator.domain.model.DatabaseObject;
+import org.springframework.data.neo4j.core.schema.Relationship;
 
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
 import java.io.File;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -24,7 +28,9 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
     protected Driver driver;
     private Schema schema;
     private InstanceCache instanceCache = new InstanceCache();
-    private boolean useCache = true;
+    private AttributeValueCache attributeValuesCache = new AttributeValueCache();
+    private boolean useInstanceCache = true;
+    private boolean useAttributeValuesCache = true;
     private Map classMap;
     public boolean debug = false;
     // Transaction-related constants
@@ -91,6 +97,86 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
     }
 
+    private String getQueryOperand(String className, String attributeName) throws ClassNotFoundException {
+        String parentClazzName = DatabaseObject.class.getPackage().getName() + "." + className;
+        Class<?> parentClazz = Class.forName(parentClazzName);
+        List<Field> fields = Neo4JSchemaParser.getAllFields(new ArrayList<>(), parentClazz);
+        Map<String, Field> fieldName2Field = new HashMap();
+        for (Field field : fields) {
+            fieldName2Field.put(field.getName(), field);
+        }
+        Field attNameField = fieldName2Field.get(attributeName);
+        Annotation annotation = attNameField.getAnnotation(Relationship.class);
+        if (annotation != null && ((Relationship) annotation).direction() == Relationship.Direction.INCOMING) {
+            return "<-";
+        }
+        return "-";
+    }
+
+    // Load all values for className and att and put them into attributeValuesCache
+    public void loadAllAttributeValues(String className, SchemaAttribute att) throws Exception {
+        if (attributeValuesCache.hasValues(className, att.getName())) {
+            return;
+        }
+        // Prepare query
+        StringBuilder query = new StringBuilder("MATCH (n:").append(className).append(")");
+        if (att.getTypeAsInt() > SchemaAttribute.INSTANCE_TYPE) {
+            // Primitive attribute
+            query.append(" RETURN DISTINCT n.DB_ID, n.").append(att.getName());
+        } else {
+            // Instance attribute
+            String allowedClassName = ((SchemaClass) att.getAllowedClasses().iterator().next()).getName();
+            String operand = getQueryOperand(className, att.getName());
+            query.append(operand).append("[r:").append(att.getName()).append("]->(s:").append(allowedClassName).append(") RETURN DISTINCT n.DB_ID, s.DB_ID");
+            if (att.isMultiple()) {
+                query.append(", r.order");
+            }
+        }
+        // DEBUG System.out.println(query);
+        // Run query, collect results and add them to attributeValuesCache
+        try (Session session = driver.session(SessionConfig.forDatabase(this.database))) {
+            Result result = session.run(query.toString());
+            if (att.getTypeAsInt() > SchemaAttribute.INSTANCE_TYPE) {
+                // Primitive attribute
+                while (result.hasNext()) {
+                    Record rec = result.next();
+                    Long dbId = rec.get(0).asLong();
+                    if (rec.get(1) != NullValue.NULL) {
+                        attributeValuesCache.addValue(className, att.getName(), dbId, rec.get(1));
+                    }
+                }
+            } else {
+                // Instance attribute
+                if (!att.isMultiple()) {
+                    // Single value Instance attribute
+                    while (result.hasNext()) {
+                        Record rec = result.next();
+                        Long dbId = rec.get(0).asLong();
+                        if (rec.get(1) != NullValue.NULL) {
+                            attributeValuesCache.addValue(className, att.getName(), dbId, rec.get(1));
+                        }
+                    }
+                } else {
+                    // Multiple value Instance attribute
+                    List<Record> results = result.list();
+                    // Sort all results by order property of the relationship
+                    Collections.sort(results, new Comparator<Record>() {
+                        public int compare(Record o1, Record o2) {
+                            return o1.get(2).asInt() - o2.get(2).asInt();
+                        }
+                    });
+                    // Retrieve sorted results
+                    for (Record rec : results) {
+                        Long dbId = rec.get(0).asLong();
+                        if (rec.get(1) != NullValue.NULL) {
+                            attributeValuesCache.addValue(className, att.getName(), dbId, rec.get(1));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * @param instances Collection of GKInstance objects for which to load attributes
      * @param attribute GKSchemaAttribute
@@ -113,20 +199,22 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @throws Exception Thrown if unable to load attribute values or if an attribute being
      *                   queried is invalid in the schema
      */
-    public void loadInstanceAttributeValues(Collection instances, Collection attributes, Boolean recursive) throws Exception {
+    public void loadInstanceAttributeValues(Collection instances, Collection attributes, Boolean recursive) throws
+            Exception {
         if (attributes.isEmpty() || instances.isEmpty()) {
             return;
         }
 
         for (Iterator ii = instances.iterator(); ii.hasNext(); ) {
             GKInstance ins = (GKInstance) ii.next();
+            String instanceClassName = ins.getSchemClass().getName();
             // Collect attributes into groups:
             // 1. primitive attributes (into primitiveAttributesWithSingleValue) with single value
             // 2. each primitive attribute with multiple values (into primitiveAttributesWithMultipleValues)
-            // 3. Instance-type attributes - per allowed class
-            Map<String, List<GKSchemaAttribute>> allowedClassName2instanceTypeAtt = new HashMap<>();
+            // 3. Instance-type attributes
             List<GKSchemaAttribute> primitiveAttributesWithSingleValue = new ArrayList<>();
             List<GKSchemaAttribute> primitiveAttributesWithMultipleValues = new ArrayList<>();
+            List<GKSchemaAttribute> instanceAttributes = new ArrayList<>();
             for (Iterator ai = attributes.iterator(); ai.hasNext(); ) {
                 GKSchemaAttribute att = (GKSchemaAttribute) ai.next();
                 if (ins.isAttributeValueLoaded(att) || !ins.getSchemClass().isValidAttribute(att)) {
@@ -140,20 +228,10 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                         primitiveAttributesWithSingleValue.add(att);
                     }
                 } else {
-                    if (att.getAllowedClasses().iterator().hasNext()) {
-                        String allowedClassName = ((SchemaClass) att.getAllowedClasses().iterator().next()).getName();
-                        List<GKSchemaAttribute> gkAtts;
-                        if (allowedClassName2instanceTypeAtt.containsKey(allowedClassName)) {
-                            gkAtts = allowedClassName2instanceTypeAtt.get(allowedClassName);
-                        } else {
-                            gkAtts = new ArrayList<>();
-                        }
-                        gkAtts.add(att);
-                        allowedClassName2instanceTypeAtt.put(allowedClassName, gkAtts);
-                    }
+                    instanceAttributes.add(att);
                 }
             }
-            // Now construct Neo4J queries per each of the attribute groups in primitiveAttNames and allowedClassName2instanceTypeAttName
+            // Now construct Neo4J queries per each of the attribute groups in primitiveAttNames and instanceAttributes
             Map<String, List<GKSchemaAttribute>> cypherQueries = new HashMap<>();
             // Primitive attributes with a single value
             StringBuilder queryRoot = new StringBuilder("MATCH (n:").append(ins.getSchemClass().getName()).append("{DB_ID:").append(ins.getDBID()).append("})");
@@ -164,7 +242,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     if (first) {
                         query.append(" RETURN DISTINCT ");
                         first = false;
-                    } else query.append(", ");
+                    } else
+                        query.append(", ");
                     query.append("n.").append(a.getName());
                 }
                 cypherQueries.put(query.toString(), primitiveAttributesWithSingleValue);
@@ -178,50 +257,114 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 }
             }
             // Instance-type attributes
-            if (!allowedClassName2instanceTypeAtt.isEmpty()) {
-                for (String ac : allowedClassName2instanceTypeAtt.keySet()) {
-                    StringBuilder query = new StringBuilder(queryRoot.toString());
-                    Boolean first = true;
-                    query.append("-[:");
-                    for (GKSchemaAttribute a : allowedClassName2instanceTypeAtt.get(ac)) {
-                        if (!first) {
-                            query.append("|");
-                        }
-                        first = false;
-                        query.append(a.getName());
-                    }
-                    query.append("]->(s:").append(ac).append(") RETURN DISTINCT s.DB_ID");
-                    cypherQueries.put(query.toString(), allowedClassName2instanceTypeAtt.get(ac));
+            for (GKSchemaAttribute a : instanceAttributes) {
+                String operand = getQueryOperand(instanceClassName, a.getName());
+                String allowedClassName = ((SchemaClass) a.getAllowedClasses().iterator().next()).getName();
+                StringBuilder query = new StringBuilder(queryRoot.toString()).append("-[r:").append(a.getName());
+                query.append("]").append(operand).append("(s:").append(allowedClassName).append(") RETURN DISTINCT s.DB_ID, type(r)");
+                if (a.isMultiple()) {
+                    query.append(", r.order");
                 }
+                cypherQueries.put(query.toString(), Collections.singletonList(a));
             }
+
             // Now run cypherQueries and collect results
             for (String query : cypherQueries.keySet()) {
                 List<GKSchemaAttribute> atts = cypherQueries.get(query);
                 try (Session session = driver.session(SessionConfig.forDatabase(this.database))) {
-                    // DEBUG: System.out.println(query);
-                    Result result = session.run(query);
-                    List<Value> values = new ArrayList();
-                    if (atts.size() > 0 && !atts.get(0).isMultiple()) {
-                        // Single-value attributes
-                        if (result.hasNext()) {
-                            Record rec = result.next();
-                            int i = 0;
-                            for (GKSchemaAttribute gkAtt : atts) {
-                                Value val = rec.get(i++);
-                                if (val != NullValue.NULL) {
-                                    handleAttributeValue(ins, gkAtt, Collections.singletonList(val), recursive);
+                    Result result = null;
+                    if (atts.size() == 1) {
+                        loadAllAttributeValues(instanceClassName, atts.get(0));
+                    } else {
+                        // DEBUG System.out.println(query);
+                        result = session.run(query);
+                    }
+                    if (atts.size() > 0) {
+                        if (!atts.get(0).isMultiple()) {
+                            // Single-value attributes
+                            if (!atts.get(0).isInstanceTypeAttribute()) {
+                                // Primitive Single-value attributes
+                                if (result != null) {
+                                    if (result.hasNext()) {
+                                        Record rec = result.next();
+                                        int i = 0;
+                                        for (GKSchemaAttribute gkAtt : atts) {
+                                            Value val = rec.get(i++);
+                                            if (val != NullValue.NULL) {
+                                                handleAttributeValue(ins, gkAtt, Collections.singletonList(val), recursive);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    List<Value> values = attributeValuesCache.getValues(instanceClassName, atts.get(0).getName(), ins.getDBID());
+                                    handleAttributeValue(ins, atts.get(0), values, recursive);
+                                }
+                            } else {
+                                // Instance-type Single-value attributes
+                                if (result != null) {
+                                    List<Record> results = result.list();
+                                    if (results.size() > 0) {
+                                        for (GKSchemaAttribute gkAtt : atts) {
+                                            List<Record> resultsForAttr = results.stream()
+                                                    .filter(p -> p.get(1).asString().equals(gkAtt.getName())).collect(Collectors.toList());
+                                            if (resultsForAttr.size() > 0) {
+                                                Value val = resultsForAttr.get(0).get(0);
+                                                if (val != NullValue.NULL) {
+                                                    handleAttributeValue(ins, gkAtt, Collections.singletonList(val), recursive);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    List<Value> values = attributeValuesCache.getValues(instanceClassName, atts.get(0).getName(), ins.getDBID());
+                                    handleAttributeValue(ins, atts.get(0), values, recursive);
                                 }
                             }
-                        }
-                    } else {
-                        for (GKSchemaAttribute gkAtt : atts) {
-                            // Multiple-value attribute
-                            while (result.hasNext()) {
-                                Value val = result.next().get(0);
-                                if (val != NullValue.NULL)
-                                    values.add(val);
+                        } else {
+                            // Multiple-value attributes
+                            if (!atts.get(0).isInstanceTypeAttribute()) {
+                                // Primitive Multiple-value attributes
+                                if (result != null) {
+                                    List<Value> values = new ArrayList();
+                                    for (GKSchemaAttribute gkAtt : atts) {
+                                        while (result.hasNext()) {
+                                            Value val = result.next().get(0);
+                                            if (val != NullValue.NULL)
+                                                values.add(val);
+                                        }
+                                        handleAttributeValue(ins, gkAtt, values, recursive);
+                                    }
+                                } else {
+                                    List<Value> values = attributeValuesCache.getValues(instanceClassName, atts.get(0).getName(), ins.getDBID());
+                                    handleAttributeValue(ins, atts.get(0), values, recursive);
+                                }
+                            } else {
+                                // Instance-type Multiple-value attributes
+                                if (result != null) {
+                                    List<Value> values = new ArrayList();
+                                    List<Record> results = result.list();
+                                    for (GKSchemaAttribute gkAtt : atts) {
+                                        // First sort all results by order property of the relationship
+                                        Collections.sort(results, new Comparator<Record>() {
+                                            public int compare(Record o1, Record o2) {
+                                                return o1.get(2).asInt() - o2.get(2).asInt();
+                                            }
+                                        });
+                                        // Then filter sorted results by gkAtt's name
+                                        List<Record> resultsForAttr = results.stream()
+                                                .filter(p -> p.get(1).asString().equals(gkAtt.getName())).collect(Collectors.toList());
+                                        for (Record rec : resultsForAttr) {
+                                            Value val = rec.get(0);
+                                            if (val != NullValue.NULL)
+                                                values.add(val);
+                                        }
+                                        handleAttributeValue(ins, gkAtt, values, recursive);
+                                    }
+                                } else {
+                                    List<Value> values = attributeValuesCache.getValues(instanceClassName, atts.get(0).getName(), ins.getDBID());
+                                    handleAttributeValue(ins, atts.get(0), values, recursive);
+                                }
                             }
-                            handleAttributeValue(ins, gkAtt, values, recursive);
                         }
                     }
                 }
@@ -229,9 +372,10 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
     }
 
-    private void handleAttributeValue(GKInstance ins, GKSchemaAttribute att, List<Value> values, Boolean recursive) throws Exception {
+    private void handleAttributeValue(GKInstance ins, GKSchemaAttribute att, List<Value> values, Boolean
+            recursive) throws Exception {
         Integer typeAsInt = att.getTypeAsInt();
-        if (values.size() > 0) {
+        if (values != null && values.size() > 0) {
             try {
                 switch (typeAsInt) {
                     case SchemaAttribute.INSTANCE_TYPE:
@@ -293,7 +437,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
     private GKInstance getInflateInstance(Value value, SchemaClass attributeClass) throws Exception {
         Long dbID = value.asLong();
         // DEBUG: System.out.println("In list: " + ins.getSchemClass().getName() + " : " + attributeClass.getName() + " : " + dbID);
-        boolean instanceWasInCacheAlready = useCache && instanceCache.get(dbID) != null;
+        boolean instanceWasInCacheAlready = useInstanceCache && instanceCache.get(dbID) != null;
         GKInstance instance = (GKInstance) getInstance(attributeClass.getName(), dbID);
         if (!instance.isInflated() && !instanceWasInCacheAlready) {
             // Don't load attributes if 1. instance is already inflated, or if
@@ -305,7 +449,6 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
         return instance;
     }
-
 
 
     /**
@@ -322,7 +465,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
     /**
      * (Re)loads all attribute values from the database.
      *
-     * @param instance GKInstance for which to load attribute values
+     * @param instance  GKInstance for which to load attribute values
      * @param recursive if true, inflate all instances recursively
      * @throws Exception Thrown if unable to load attribute values or if an attribute being
      *                   queried is invalid in the schema
@@ -345,7 +488,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         loadInstanceAttributeValues(Collections.singletonList(instance), Collections.singletonList(attribute), true);
     }
 
-    public void loadInstanceAttributeValues(GKInstance instance, SchemaAttribute attribute, Boolean recursive) throws Exception {
+    public void loadInstanceAttributeValues(GKInstance instance, SchemaAttribute attribute, Boolean recursive) throws
+            Exception {
         loadInstanceAttributeValues(Collections.singletonList(instance), Collections.singletonList(attribute), recursive);
     }
 
@@ -389,12 +533,14 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         loadInstanceAttributeValues(instances, attributes);
     }
 
-    public Collection fetchInstanceByAttribute(SchemaAttribute attribute, String operator, Object value) throws Exception {
+    public Collection fetchInstanceByAttribute(SchemaAttribute attribute, String operator, Object value) throws
+            Exception {
         AttributeQueryRequest aqr = new AttributeQueryRequest(attribute, operator, value);
         return fetchInstance(aqr);
     }
 
-    public Collection fetchInstanceByAttribute(String className, String attributeName, String operator, Object value) throws Exception {
+    public Collection fetchInstanceByAttribute(String className, String attributeName, String operator, Object
+            value) throws Exception {
         AttributeQueryRequest aqr = new AttributeQueryRequest(className, attributeName, operator, value);
         return fetchInstance(aqr);
     }
@@ -407,7 +553,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
 
     // Throw Exception if o is an instance of a class that is inconsistent with a previously set value of collectionOfInstancesOnly
     // e.g. if o is of type Instance, but the previous value of collectionOfInstancesOnly corresponds to a QueryRequest
-    private Boolean setCollectionOfInstancesOnlyFlag(Object o, Boolean collectionOfInstancesOnly) throws Exception {
+    private Boolean setCollectionOfInstancesOnlyFlag(Object o, Boolean collectionOfInstancesOnly) throws
+            Exception {
         String errMsg = "Illegal Collection - a mix of Instances and QueryRequests in a single Collection is not implemented";
         if (o instanceof org.reactome.server.service.model.Instance) {
             if (collectionOfInstancesOnly == null) {
@@ -452,7 +599,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
             if (att.isInstanceTypeAttribute()) {
                 // Instance attribute
                 if (!aqr.getOperator().equals("IS NULL")) {
-                    query.append("-[:").append(attName).append("]->(s").append(pos);
+                    String operand = getQueryOperand(aqr.getCls().getName(), att.getName());
+                    query.append(operand).append("[:").append(attName).append("]->(s").append(pos);
                     if (aqr instanceof Neo4JAdaptor.ReverseAttributeQueryRequest) {
                         query.append(":").append(aqr.getCls().getName());
                     }
@@ -522,7 +670,11 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     // E.g. Species.name
                     whereClause.append(whereClauseKeyWord).append(" ANY(x IN n.").append(attName);
                 } else {
-                    whereClause.append(whereClauseKeyWord).append(" n.").append(attName);
+                    whereClause.append(whereClauseKeyWord);
+                    if (Arrays.asList("NOT LIKE", "!=").contains(aqr.getOperator())) {
+                        whereClause.append(" NOT (");
+                    }
+                    whereClause.append(" n.").append(attName);
                 }
                 if (value instanceof Collection) {
                     // Value is a collection of primitive values
@@ -530,8 +682,31 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     for (Iterator ci = ((Collection) value).iterator(); ci.hasNext(); ) {
                         Object val = ci.next();
                         if (val instanceof String) {
-                            vals.add("\"" + val + "\"");
-                        } else if (val instanceof Integer) {
+                            if (att.getTypeAsInt() == SchemaAttribute.LONG_TYPE) {
+                                try {
+                                    vals.add(Long.parseLong((String) val));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.INTEGER_TYPE) {
+                                try {
+                                    vals.add(Integer.parseInt((String) val));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.FLOAT_TYPE) {
+                                try {
+                                    vals.add(Float.parseFloat((String) val));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.BOOLEAN_TYPE) {
+                                try {
+                                    vals.add(Boolean.parseBoolean((String) val));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.STRING_TYPE) {
+                                vals.add("\"" + val + "\"");
+                            }
+                        }
+                        if (val instanceof Integer) {
                             vals.add(((Integer) val).intValue());
                         } else if (val instanceof Float) {
                             vals.add(((Float) val).floatValue());
@@ -550,20 +725,53 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     }
                 } else {
                     // Single primitive value
-                    if (!aqr.getOperator().equals("IS NULL") && !aqr.getOperator().equals("IS NOT NULL")) {
+                    if (!Arrays.asList("IS NULL", "IS NOT NULL").contains(aqr.getOperator())) {
+                        String operator = " = ";
+                        if (Arrays.asList("LIKE", "NOT LIKE", "REGEXP").contains(aqr.getOperator())) {
+                            operator = " =~ ";
+                        }
                         if (att.isMultiple()) {
-                            whereClause.append(" WHERE x");
+                            if (Arrays.asList("NOT LIKE", "!=").contains(aqr.getOperator())) {
+                                whereClause.append(" WHERE NOT (x");
+                            } else {
+                                whereClause.append(" WHERE x");
+                            }
                         }
                         if (value instanceof String) {
-                            whereClause.append(" = \"").append(value + "\"");
+                            if (att.getTypeAsInt() == SchemaAttribute.LONG_TYPE) {
+                                try {
+                                    whereClause.append(operator).append(Long.parseLong((String) value));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.INTEGER_TYPE) {
+                                try {
+                                    whereClause.append(operator).append(Integer.parseInt((String) value));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.FLOAT_TYPE) {
+                                try {
+                                    whereClause.append(operator).append(Float.parseFloat((String) value));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.BOOLEAN_TYPE) {
+                                try {
+                                    whereClause.append(operator).append(Boolean.parseBoolean((String) value));
+                                } catch (NumberFormatException nfe) {
+                                }
+                            } else if (att.getTypeAsInt() == SchemaAttribute.STRING_TYPE) {
+                                whereClause.append(operator).append("\"").append(value + "\"");
+                            }
                         } else if (value instanceof Integer) {
-                            whereClause.append(" = ").append(((Integer) value).intValue());
+                            whereClause.append(operator).append(((Integer) value).intValue());
                         } else if (value instanceof Float) {
-                            whereClause.append(" = ").append(((Float) value).floatValue());
+                            whereClause.append(operator).append(((Float) value).floatValue());
                         } else if (value instanceof Boolean) {
-                            whereClause.append(" = ").append(((Boolean) value).booleanValue());
+                            whereClause.append(operator).append(((Boolean) value).booleanValue());
                         } else if (value instanceof Long) {
-                            whereClause.append(" = ").append(((Long) value).longValue());
+                            whereClause.append(operator).append(((Long) value).longValue());
+                        }
+                        if (Arrays.asList("NOT LIKE", "!=").contains(aqr.getOperator())) {
+                            whereClause.append(")");
                         }
                     } else {
                         whereClause.append(" ").append(aqr.getOperator());
@@ -578,7 +786,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
         query.append(" ").append(whereClause).append(" RETURN n.DB_ID, n._displayName, n.schemaClass");
         Set instances = new HashSet();
-        System.out.println(query); // DEBUG
+        // DEBUG System.out.println(query);
         try (Session session = driver.session(SessionConfig.forDatabase(getDBName()))) {
             Result result = session.run(query.toString());
             while (result.hasNext()) {
@@ -625,7 +833,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @param attributeName Name of the attribute to update for the corresponding instance in the database
      * @throws Exception Thrown if the instance has no DB_ID or if unable to update the specified attribute name
      */
-    public void updateInstanceAttribute(GKInstance instance, String attributeName, Transaction tx) throws Exception {
+    public void updateInstanceAttribute(GKInstance instance, String attributeName, Transaction tx) throws
+            Exception {
         if (instance.getDBID() == null) {
             throw (new DBIDNotSetException(instance));
         }
@@ -730,7 +939,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
 
     // Find all referrer instances and then replace the previous instance as value of attName with
     // the call argument: instance
-    private void updateReferrers(List<List<Object>> referrers, GKInstance instance, Transaction tx) throws Exception {
+    private void updateReferrers(List<List<Object>> referrers, GKInstance instance, Transaction tx) throws
+            Exception {
         for (List<Object> rec : referrers) {
             Long dbID = (Long) rec.get(0);
             String originClassName = rec.get(1).toString();
@@ -787,7 +997,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @throws Exception Thrown if unable to retrieve attribute values from the instance or if unable to store
      *                   the instance
      */
-    public Long storeInstance(GKInstance instance, boolean forceStore, Transaction tx, boolean recursive) throws Exception {
+    public Long storeInstance(GKInstance instance, boolean forceStore, Transaction tx, boolean recursive) throws
+            Exception {
         Long dbID = null;
         if (forceStore) {
             dbID = instance.getDBID();
@@ -899,7 +1110,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
     }
 
-    private void storeAttribute(SchemaAttribute att, GKInstance instance, Transaction tx, boolean recursive) throws Exception {
+    private void storeAttribute(SchemaAttribute att, GKInstance instance, Transaction tx, boolean recursive) throws
+            Exception {
         SchemaClass cls = instance.getSchemClass();
         if (att.getName().equals(Schema.DB_ID_NAME)) return;
         List attVals = instance.getAttributeValuesList(att.getName());
@@ -931,7 +1143,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
     }
 
-    private void deleteFromDBInstanceAttributeValue(SchemaAttribute att, GKInstance instance, Transaction tx) throws Exception {
+    private void deleteFromDBInstanceAttributeValue(SchemaAttribute att, GKInstance instance, Transaction tx) throws
+            Exception {
         SchemaClass cls = instance.getSchemClass();
         if (att.getName().equals(Schema.DB_ID_NAME)) return;
         List attVals = instance.getAttributeValuesList(att.getName());
@@ -945,7 +1158,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-    public void loadInstanceReverseAttributeValues(Collection instances, Collection attributes) throws Exception {
+    public void loadInstanceReverseAttributeValues(Collection instances, Collection attributes) throws
+            Exception {
         for (Iterator ai = attributes.iterator(); ai.hasNext(); ) {
             SchemaAttribute att = (SchemaAttribute) ai.next();
             loadInstanceReverseAttributeValues(instances, att);
@@ -968,7 +1182,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * heterogenous and the user does not need to worry about that all the instances
      * have the given reverse attribute.
      */
-    public void loadInstanceReverseAttributeValues(Collection instances, SchemaAttribute attribute) throws Exception {
+    public void loadInstanceReverseAttributeValues(Collection instances, SchemaAttribute attribute) throws
+            Exception {
         if (instances.isEmpty()) {
             return;
         }
@@ -1007,7 +1222,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
         List<QueryRequest> aqrList = makeAqrs(instance);
         if (aqrList == null) {
-            if (debug) System.out.println(instance + "\tno matching instances due to unmatching attribute value(s).");
+            if (debug)
+                System.out.println(instance + "\tno matching instances due to unmatching attribute value(s).");
         } else if (aqrList.isEmpty()) {
             if (debug) System.out.println(instance + "\tno defining attribute values.");
         } else {
@@ -1308,7 +1524,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @return Collection of (Long) DB_IDs
      * @throws Exception
      */
-    public Collection fetchDBIDsByAttributeValueCount(GKSchemaAttribute att, Collection values, Integer count) throws Exception {
+    public Collection fetchDBIDsByAttributeValueCount(GKSchemaAttribute att, Collection values, Integer count) throws
+            Exception {
         SchemaClass origin = att.getOrigin();
         if (!att.isOriginMuliple()) {
             throw (
@@ -1643,13 +1860,11 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      *                   release number attribute
      */
     public Integer getReleaseNumber() throws Exception {
-        if (!getSchema().isValidClass(ReactomeJavaConstants._Release)) {
+        if (!getSchema().isValidClass(ReactomeJavaConstants._Release))
             return null;
-        }
         Collection<?> c = fetchInstancesByClass(ReactomeJavaConstants._Release);
-        if (c == null || c.size() == 0) {
+        if (c == null || c.size() == 0)
             return null;
-        }
         GKInstance release = (GKInstance) c.iterator().next();
         Integer releaseNumber = (Integer) release.getAttributeValue(ReactomeJavaConstants.releaseNumber);
         return releaseNumber;
@@ -1688,9 +1903,10 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @throws IllegalAccessException Thrown if unable to access constructor for the class name
      * @throws ClassNotFoundException Thrown if unable to find the class for the class name
      */
-    public Instance getInstance(String className, Long dbID) throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+    public Instance getInstance(String className, Long dbID) throws
+            InstantiationException, IllegalAccessException, ClassNotFoundException {
         GKInstance instance;
-        if (!useCache || (instance = instanceCache.get(dbID)) == null) {
+        if (!useInstanceCache || (instance = instanceCache.get(dbID)) == null) {
             if (classMap != null && classMap.containsKey(className)) {
                 String targetClassName = (String) classMap.get(className);
                 instance = (GKInstance) Class.forName(targetClassName).newInstance();
@@ -1762,10 +1978,10 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * they are requested, which can be very time consuming, but you will reduce
      * the memory footprint.
      *
-     * @param useCache true if the cache should be used; false otherwise
+     * @param useInstanceCache true if the cache should be used; false otherwise
      */
-    public void setUseCache(boolean useCache) {
-        this.useCache = useCache;
+    public void setUseCache(boolean useInstanceCache) {
+        this.useInstanceCache = useInstanceCache;
     }
 
     /**
@@ -1774,7 +1990,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @return true if the cache will be used; false otherwise
      */
     public boolean isUseCache() {
-        return useCache;
+        return useInstanceCache;
     }
 
     /**
@@ -1788,19 +2004,23 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         return fetchInstanceByAttribute(((GKSchema) schema).getRootClass().getName(), "DB_ID", "=", dbIDs);
     }
 
-    public AttributeQueryRequest createAttributeQueryRequest(String clsName, String attName, String operator, Object value) throws InvalidClassException, InvalidAttributeException {
+    public AttributeQueryRequest createAttributeQueryRequest(String clsName, String attName, String
+            operator, Object value) throws InvalidClassException, InvalidAttributeException {
         return new AttributeQueryRequest(clsName, attName, operator, value);
     }
 
-    public AttributeQueryRequest createAttributeQueryRequest(SchemaAttribute attribute, String operator, Object value) throws InvalidAttributeException {
+    public AttributeQueryRequest createAttributeQueryRequest(SchemaAttribute attribute, String operator, Object
+            value) throws InvalidAttributeException {
         return new AttributeQueryRequest(attribute, operator, value);
     }
 
-    public ReverseAttributeQueryRequest createReverseAttributeQueryRequest(String clsName, String attName, String operator, Object value) throws Exception {
+    public ReverseAttributeQueryRequest createReverseAttributeQueryRequest(String clsName, String
+            attName, String operator, Object value) throws Exception {
         return new ReverseAttributeQueryRequest(clsName, attName, operator, value);
     }
 
-    public ReverseAttributeQueryRequest createReverseAttributeQueryRequest(SchemaClass cls, SchemaAttribute att, String operator, Object value) throws InvalidAttributeException {
+    public ReverseAttributeQueryRequest createReverseAttributeQueryRequest(SchemaClass cls, SchemaAttribute
+            att, String operator, Object value) throws InvalidAttributeException {
         return new ReverseAttributeQueryRequest(cls, att, operator, value);
     }
 
