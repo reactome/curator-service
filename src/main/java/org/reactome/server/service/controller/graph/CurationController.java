@@ -13,6 +13,7 @@ import org.reactome.server.service.model.Instance;
 import org.reactome.server.service.params.ExistingInstancesAttributesData;
 import org.reactome.server.service.params.FetchInstancesAttributesData;
 import org.reactome.server.service.params.LoadInstancesAttributesData;
+import org.reactome.server.service.params.LoadInstancesClassAttributesData;
 import org.reactome.server.service.persistence.Neo4JAdaptor;
 import org.reactome.server.service.schema.*;
 import org.slf4j.Logger;
@@ -239,7 +240,7 @@ public class CurationController {
             @RequestBody String post) throws Exception {
 
         ObjectMapper objectMapper = new ObjectMapper();
-        LoadInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesAttributesData.class);
+        LoadInstancesClassAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesClassAttributesData.class);
         Collection<Instance> instances = neo4JAdaptor.fetchInstance(postData.getDbIds());
         Set<SchemaClass> classes = new HashSet();
         Set<SchemaAttribute> attributes = new HashSet();
@@ -284,6 +285,30 @@ public class CurationController {
         neo4JAdaptor.loadInstanceAttributeValues(instances, attributes, postData.getRecursive());
         System.out.println(((GKInstance) instances.iterator().next()).getAttributes().keySet());
     }
+
+    @Operation(summary = "Load referrers to instances corresponding to collection of DB_IDs and a collection of attribute names")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/attributes/reverse/load", method = RequestMethod.POST, consumes = "text/plain")
+    @ResponseBody
+    public void loadInstanceReverseAttributeValues(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a collection of attribute names",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [9612973], \"attributeNames\" : [\"hasEvent\"]}"))
+            )
+            @RequestBody String post) throws Exception {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LoadInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesAttributesData.class);
+        Collection<Instance> instances = neo4JAdaptor.fetchInstance(postData.getDbIds());
+        List<String> attributeNames = postData.getAttributeNames();
+        String[] array = new String[attributeNames.size()];
+        attributeNames.toArray(array);
+        neo4JAdaptor.loadInstanceReverseAttributeValues(instances, array);
+    }
+
 
     @Operation(
             summary = "Retrieve instance count for a given Class name"

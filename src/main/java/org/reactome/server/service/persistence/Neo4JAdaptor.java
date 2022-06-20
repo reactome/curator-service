@@ -792,7 +792,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
         query.append(" ").append(whereClause).append(" RETURN n.DB_ID, n._displayName, n.schemaClass");
         Set instances = new HashSet();
-        System.out.println(query); // DEBUG TODO: &&&&
+        // DEBUG System.out.println(query);
         try (Session session = driver.session(SessionConfig.forDatabase(getDBName()))) {
             Result result = session.run(query.toString());
             while (result.hasNext()) {

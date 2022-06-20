@@ -6,16 +6,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class LoadInstancesAttributesData {
     private List<Long> dbIds;
-    private List<List> classAttributeNames;
-    private Boolean recursive;
+    private List<String> attributeNames;
 
     public LoadInstancesAttributesData(
             @JsonProperty("dbIds") List<Long> dbIds,
-            @JsonProperty("classAttributeNames") List<List> classAttributeNames,
+            @JsonProperty("attributeNames") List attributeNames,
             @JsonProperty("recursive") Boolean recursive) {
         this.dbIds = dbIds;
-        this.classAttributeNames = classAttributeNames;
-        this.recursive = recursive;
+        this.attributeNames = attributeNames;
     }
 
     public List<Long> getDbIds() {
@@ -26,19 +24,11 @@ public class LoadInstancesAttributesData {
         this.dbIds = dbIds;
     }
 
-    public List<List> getClassAttributeNames() {
-        return classAttributeNames;
+    public List<String> getAttributeNames() {
+        return attributeNames;
     }
 
-    public void setClassAttributeNames(List<List> classAttributeNames) {
-        this.classAttributeNames = classAttributeNames;
-    }
-
-    public Boolean getRecursive() {
-        return recursive;
-    }
-
-    public void setRecursive(Boolean recursive) {
-        this.recursive = recursive;
+    public void setAttributeNames(List<String> attributeNames) {
+        this.attributeNames = attributeNames;
     }
 }
