@@ -787,7 +787,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     }
                 }
             }
-            whereClauseKeyWord = " AND";
+            if (whereClause.toString().contains(" WHERE"))
+                whereClauseKeyWord = " AND";
             pos++;
         }
         query.append(" ").append(whereClause).append(" RETURN n.DB_ID, n._displayName, n.schemaClass");
