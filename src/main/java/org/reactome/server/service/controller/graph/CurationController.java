@@ -89,8 +89,8 @@ public class CurationController {
     @RequestMapping(value = "/cache/use/{flag}", method = RequestMethod.GET)
     @ResponseBody
     public void setUseCache(@Parameter(description = "Flag", example = "true", required = true)
-                                @PathVariable String flag
-                                                                  ) {
+                            @PathVariable String flag
+    ) {
         infoLogger.info("Set use cache flag to the one specified");
         neo4JAdaptor.setUseCache(Boolean.parseBoolean(flag));
     }
@@ -185,7 +185,13 @@ public class CurationController {
                     // By String attribute value
                     //content = @Content(examples = @ExampleObject("[[\"Pathway\", \"_displayName\", \"=\", \"Deregulating Cellular Energetics\"]]"))
                     // By DB_ID
-                    content = @Content(examples = @ExampleObject("[[\"Pathway\", \"hasEvent\", \"\", \"5492241\"]]"))
+                    //content = @Content(examples = @ExampleObject("[[\"Pathway\", \"hasEvent\", \"\", \"5492241\"]]"))
+                    // By LIKE
+                    // content = @Content(examples = @ExampleObject("[[\"Pathway\", \"_displayName\", \"LIKE\", \"NFKbeta\"]]"))
+                    // By NOT LIKE
+                    //content = @Content(examples = @ExampleObject("[[\"Pathway\", \"_displayName\", \"NOT LIKE\", \"NFKbeta\"]]"))
+                    // By REGEXP
+                    content = @Content(examples = @ExampleObject("[[\"Pathway\", \"_displayName\", \"REGEXP\", \".*NFKbeta.*\"]]"))
 
             )
             @RequestBody String post) throws Exception {
@@ -207,7 +213,10 @@ public class CurationController {
         }
         Set<Instance> instances = neo4JAdaptor.fetchInstance(aqrList);
         // Sanity filter: Return maximum 100 instances
-        return new ArrayList<>(instances).subList(0, 100);
+        if (instances.size() > 100) {
+            return new ArrayList<>(instances).subList(0, 100);
+        }
+        return instances;
     }
 
     @Operation(summary = "Load instance attribute values for a collection of DB_IDs and a collection of class-attribute name tuples")
@@ -285,7 +294,7 @@ public class CurationController {
     @RequestMapping(value = "/instances/{className}/count", method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
     public String getClassInstanceCount(@Parameter(description = "Class Name", example = "Pathway", required = true)
-                                                                     @PathVariable String className) throws Exception {
+                                        @PathVariable String className) throws Exception {
         return Long.toString(neo4JAdaptor.getClassInstanceCount(className));
     }
 }

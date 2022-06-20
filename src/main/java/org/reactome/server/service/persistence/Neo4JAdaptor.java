@@ -760,11 +760,12 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                                 }
                             } else if (att.getTypeAsInt() == SchemaAttribute.STRING_TYPE) {
                                 whereClause.append(operator).append("\"");
-                                if (operator.equals("=~")) {
-                                    whereClause.append(".*").append(value + ".*\"");
+                                if (operator.equals(" =~ ")) {
+                                    whereClause.append(".*").append(value).append(".*");
                                 } else {
-                                    whereClause.append(value + "\"");
+                                    whereClause.append(value);
                                 }
+                                whereClause.append("\"");
                             }
                         } else if (value instanceof Integer) {
                             whereClause.append(operator).append(((Integer) value).intValue());
@@ -791,7 +792,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         }
         query.append(" ").append(whereClause).append(" RETURN n.DB_ID, n._displayName, n.schemaClass");
         Set instances = new HashSet();
-        // DEBUG System.out.println(query);
+        System.out.println(query); // DEBUG TODO: &&&&
         try (Session session = driver.session(SessionConfig.forDatabase(getDBName()))) {
             Result result = session.run(query.toString());
             while (result.hasNext()) {
