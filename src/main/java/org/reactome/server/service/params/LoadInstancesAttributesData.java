@@ -10,8 +10,7 @@ public class LoadInstancesAttributesData {
 
     public LoadInstancesAttributesData(
             @JsonProperty("dbIds") List<Long> dbIds,
-            @JsonProperty("attributeNames") List attributeNames,
-            @JsonProperty("recursive") Boolean recursive) {
+            @JsonProperty("attributeNames") List attributeNames) {
         this.dbIds = dbIds;
         this.attributeNames = attributeNames;
     }

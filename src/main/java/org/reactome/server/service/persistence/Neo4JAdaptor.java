@@ -992,6 +992,23 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         return storeInstance(instance, false, tx, true);
     }
 
+    /* Mint new DB_ID */
+    public Long mintNewDBID() throws Exception {
+        Long dbID;
+        try (Session session = driver.session(SessionConfig.forDatabase(getDBName()))) {
+            Transaction tx = session.beginTransaction();
+            Value result = executeTransaction(
+                    "MATCH (s:Seq {key:\"dbIdSeq\"}) CALL apoc.atomic.add(s,'value',1,10) YIELD newValue as seq RETURN seq", tx);
+            if (result != null) {
+                dbID = result.asLong();
+            } else {
+                throw (new Exception("Unable to get auto-incremented dbID value."));
+            }
+            tx.commit();
+        }
+        return dbID;
+    }
+
     /**
      * Store a GKInstance object into the database. The implementation of this method will store
      * all newly created, referred GKInstances by the specified GKInstance if they are not in the
@@ -1019,14 +1036,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         StringBuilder stmt = new StringBuilder();
         if (dbID == null) {
             // Mint new DB_ID
-            stmt.append("MATCH (s:Seq {key:\"dbIdSeq\"}) CALL apoc.atomic.add(s,'value',1,10) YIELD newValue as seq RETURN seq");
-            Value result = executeTransaction(stmt.toString(), tx);
-            if (result != null) {
-                dbID = result.asLong();
-                instance.setDBID(dbID);
-            } else {
-                throw (new Exception("Unable to get auto-incremented dbID value."));
-            }
+            dbID = mintNewDBID();
+            instance.setDBID(dbID);
         }
         // Store Instance
         // Note: ancestors are attached as labels

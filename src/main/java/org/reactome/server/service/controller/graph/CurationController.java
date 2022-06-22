@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.neo4j.driver.Value;
 import org.reactome.server.service.model.GKInstance;
 import org.reactome.server.service.model.Instance;
 import org.reactome.server.service.params.ExistingInstancesAttributesData;
@@ -67,10 +68,11 @@ public class CurationController {
     })
     @RequestMapping(value = "/fetch/maxdbid", method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
-    public long getMaxDB_ID() {
+    public String getMaxDB_ID() {
         infoLogger.info("Request for the maximum DB_ID");
-        return neo4JAdaptor.fetchMaxDbId(); // TODO: &&&& - still not working
+        return Long.toString(neo4JAdaptor.fetchMaxDbId());
     }
+
 
     @Operation(summary = "Refresh the cache")
     @ApiResponses({
@@ -143,11 +145,11 @@ public class CurationController {
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
-    @RequestMapping(value = "/instances/fetch/byclassname", method = RequestMethod.POST, consumes = "text/plain", produces = MediaType.APPLICATION_JSON_VALUE)
+    @RequestMapping(value = "/instances/fetch/byclassname", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public Collection<Instance> fetchInstances(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Json containing a collection of DB_IDs, a collection of class-attribute name tuples and a flag for recursive attribute value retrieval",
+                    description = "Json containing a collection of DB_IDs, and a class",
                     required = true,
                     content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"className\" : \"PathwayDiagram\"}"))
 
@@ -173,11 +175,39 @@ public class CurationController {
         return instances;
     }
 
+    @Operation(summary = "Tries to get instances of the given class, with DB_ID in list provided, from " +
+            " instance cache, if possible.  Otherwise, creates a new instance with " +
+            " the given DB_ID.  This new instance will be cached even if caching is switched off.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/get/byclassname", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Collection<Instance> getInstance(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a class",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"className\" : \"PathwayDiagram\"}"))
+
+            )
+            @RequestBody String post) throws Exception {
+        infoLogger.info("Fetch instances for a collection of DB_IDs");
+        ObjectMapper objectMapper = new ObjectMapper();
+        FetchInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), FetchInstancesAttributesData.class);
+        List<Long> dbIds = postData.getDbIds();
+        String className = postData.getClassName();
+        List<Instance> instances = new ArrayList();
+        for (Long dbId: dbIds) {
+            instances.add(neo4JAdaptor.getInstance(className, dbId));
+        }
+        return instances;
+    }
+
     @Operation(summary = "Fetch instances by a list of quadruples: className, attributeName, operator and value")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
-    @RequestMapping(value = "/instances/fetch/byattributevalues", method = RequestMethod.POST, consumes = "text/plain", produces = MediaType.APPLICATION_JSON_VALUE)
+    @RequestMapping(value = "/instances/fetch/byattributevalues", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public Collection<Instance> fetchInstancesByAttributeValues(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -224,7 +254,7 @@ public class CurationController {
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
-    @RequestMapping(value = "/instances/attributes/load", method = RequestMethod.POST, consumes = "text/plain")
+    @RequestMapping(value = "/instances/attributes/load", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
     public void loadInstanceAttributeValues(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -290,7 +320,7 @@ public class CurationController {
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
-    @RequestMapping(value = "/instances/attributes/reverse/load", method = RequestMethod.POST, consumes = "text/plain")
+    @RequestMapping(value = "/instances/attributes/reverse/load", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
     public void loadInstanceReverseAttributeValues(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -321,5 +351,93 @@ public class CurationController {
     public String getClassInstanceCount(@Parameter(description = "Class Name", example = "Pathway", required = true)
                                         @PathVariable String className) throws Exception {
         return Long.toString(neo4JAdaptor.getClassInstanceCount(className));
+    }
+
+    @Operation(
+            summary = "Retrieve instance count for a given Class name"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/count", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public Map<String, Long> getAllInstanceCounts() throws Exception {
+        return neo4JAdaptor.getAllInstanceCounts();
+    }
+
+    @Operation(
+            summary = "EWAS modifications"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/fetch/ewas_modifications", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public List<List<Long>> fetchEWASModifications() throws Exception {
+        return neo4JAdaptor.fetchEWASModifications();
+    }
+
+    @Operation(
+            summary = "Stable Identifiers With Duplicate DB_IDs"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/fetch/stable_identifiers_with_dup_dbids", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public List<Map<String, Object>> fetchStableIdentifiersWithDuplicateDBIds() {
+        List<Map<String, Object>> sIds = neo4JAdaptor.fetchStableIdentifiersWithDuplicateDBIds();
+        for (Map<String, Object> rec : sIds) {
+            for (String key: rec.keySet()) {
+                String strVal;
+                if (key.equals("DB_ID")) {
+                    strVal = (Long.toString(((Value) rec.get(key)).asLong()));
+                } else {
+                    strVal = ((Value) rec.get(key)).asString();
+                }
+                rec.put(key, strVal);
+            }
+        }
+        return sIds;
+    }
+
+    /************* Write/Update/Delete End-points ***************/
+
+    @Operation(summary = "Mint new DB_ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/mint/dbid", method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public String mintNewDBID() throws Exception {
+        infoLogger.info("Request for the maximum DB_ID");
+        return Long.toString(neo4JAdaptor.mintNewDBID());
+    }
+
+    @Operation(summary = "Update in Neo4J an attribute value for an instance")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/attributes/updateindb", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public void txUpdateInstanceAttribute(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a collection of attribute names",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [9612973], \"attributeNames\" : [\"_displayName\"]}"))
+            )
+            @RequestBody String post) throws Exception {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LoadInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesAttributesData.class);
+        List<String> attributeNames = postData.getAttributeNames();
+        for (Long dbId: postData.getDbIds()) {
+            // The assumption is that the instance is in the cache (hence className argument below set to null),
+            // and that the attribute value has been updated in the cahced instance but not yet in Neo4J
+            Instance instance = neo4JAdaptor.getInstance(null, dbId);
+            for (String attributeName: attributeNames) {
+                neo4JAdaptor.txUpdateInstanceAttribute((GKInstance) instance, attributeName);
+            }
+        }
     }
 }
