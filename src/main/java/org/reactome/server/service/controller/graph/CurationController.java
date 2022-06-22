@@ -11,10 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.neo4j.driver.Value;
 import org.reactome.server.service.model.GKInstance;
 import org.reactome.server.service.model.Instance;
-import org.reactome.server.service.params.ExistingInstancesAttributesData;
-import org.reactome.server.service.params.FetchInstancesAttributesData;
-import org.reactome.server.service.params.LoadInstancesAttributesData;
-import org.reactome.server.service.params.LoadInstancesClassAttributesData;
+import org.reactome.server.service.params.*;
 import org.reactome.server.service.persistence.Neo4JAdaptor;
 import org.reactome.server.service.schema.*;
 import org.slf4j.Logger;
@@ -136,7 +133,7 @@ public class CurationController {
             @RequestBody String post) throws Exception {
         infoLogger.info("Check if which existing DB_Ids are (or are not, depending on parameter) in the provided list");
         ObjectMapper objectMapper = new ObjectMapper();
-        ExistingInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), ExistingInstancesAttributesData.class);
+        ExistingInstancesData postData = objectMapper.convertValue(objectMapper.readTree(post), ExistingInstancesData.class);
         Set<Long> existingDB_IDs = neo4JAdaptor.existing(postData.getDbIds(), postData.getCheckCache(), postData.getInverse());
         return existingDB_IDs;
     }
@@ -157,7 +154,7 @@ public class CurationController {
             @RequestBody String post) throws Exception {
         infoLogger.info("Fetch instances for a collection of DB_IDs");
         ObjectMapper objectMapper = new ObjectMapper();
-        FetchInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), FetchInstancesAttributesData.class);
+        InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
         Collection<Instance> instances;
         String className = postData.getClassName();
@@ -193,11 +190,11 @@ public class CurationController {
             @RequestBody String post) throws Exception {
         infoLogger.info("Fetch instances for a collection of DB_IDs");
         ObjectMapper objectMapper = new ObjectMapper();
-        FetchInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), FetchInstancesAttributesData.class);
+        InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
         String className = postData.getClassName();
         List<Instance> instances = new ArrayList();
-        for (Long dbId: dbIds) {
+        for (Long dbId : dbIds) {
             instances.add(neo4JAdaptor.getInstance(className, dbId));
         }
         return instances;
@@ -270,7 +267,7 @@ public class CurationController {
             @RequestBody String post) throws Exception {
 
         ObjectMapper objectMapper = new ObjectMapper();
-        LoadInstancesClassAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesClassAttributesData.class);
+        InstancesAttributesRecursiveData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesAttributesRecursiveData.class);
         Collection<Instance> instances = neo4JAdaptor.fetchInstance(postData.getDbIds());
         Set<SchemaClass> classes = new HashSet();
         Set<SchemaAttribute> attributes = new HashSet();
@@ -331,7 +328,7 @@ public class CurationController {
             @RequestBody String post) throws Exception {
 
         ObjectMapper objectMapper = new ObjectMapper();
-        LoadInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesAttributesData.class);
+        InstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesAttributesData.class);
         Collection<Instance> instances = neo4JAdaptor.fetchInstance(postData.getDbIds());
         List<String> attributeNames = postData.getAttributeNames();
         String[] array = new String[attributeNames.size()];
@@ -388,7 +385,7 @@ public class CurationController {
     public List<Map<String, Object>> fetchStableIdentifiersWithDuplicateDBIds() {
         List<Map<String, Object>> sIds = neo4JAdaptor.fetchStableIdentifiersWithDuplicateDBIds();
         for (Map<String, Object> rec : sIds) {
-            for (String key: rec.keySet()) {
+            for (String key : rec.keySet()) {
                 String strVal;
                 if (key.equals("DB_ID")) {
                     strVal = (Long.toString(((Value) rec.get(key)).asLong()));
@@ -414,29 +411,94 @@ public class CurationController {
         return Long.toString(neo4JAdaptor.mintNewDBID());
     }
 
-    @Operation(summary = "Update in Neo4J an attribute value for an instance")
+    @Operation(summary = "Update in Neo4J an attribute value in instance(s) corresponding to the list of DB_IDs provided")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @RequestMapping(value = "/instances/attributes/updateindb", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
-    public void txUpdateInstanceAttribute(
+    public void txUpdateInstanceAttributes(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs, and a collection of attribute names",
                     required = true,
                     content = @Content(examples = @ExampleObject("{ \"dbIds\" : [9612973], \"attributeNames\" : [\"_displayName\"]}"))
             )
             @RequestBody String post) throws Exception {
-
         ObjectMapper objectMapper = new ObjectMapper();
-        LoadInstancesAttributesData postData = objectMapper.convertValue(objectMapper.readTree(post), LoadInstancesAttributesData.class);
+        InstancesAttributesData postData =
+                objectMapper.convertValue(objectMapper.readTree(post), InstancesAttributesData.class);
         List<String> attributeNames = postData.getAttributeNames();
-        for (Long dbId: postData.getDbIds()) {
+        for (Long dbId : postData.getDbIds()) {
             // The assumption is that the instance is in the cache (hence className argument below set to null),
-            // and that the attribute value has been updated in the cahced instance but not yet in Neo4J
+            // and that the attribute value has been updated in the cached instance but not yet in Neo4J
             Instance instance = neo4JAdaptor.getInstance(null, dbId);
-            for (String attributeName: attributeNames) {
+            for (String attributeName : attributeNames) {
                 neo4JAdaptor.txUpdateInstanceAttribute((GKInstance) instance, attributeName);
+            }
+        }
+    }
+
+    @Operation(summary = "Update in the cache attribute values in instance(s) corresponding to the list of DB_IDs provided")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/attributes/updateincache", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public void updateInstanceAttributesInCache(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a collection of attribute names and a collection of values - " +
+                            "the same collection of values will be assigned to each attribute",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(
+                            "{ \"dbIds\" : [9612973], \"className\" : \"Pathway\", " +
+                                    "\"attributeNames\" : [\"_displayName\"], \"values\" : [\"Autophagy1\"]}"))
+            )
+            @RequestBody String post) throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        InstancesAttributesValuesData postData =
+                objectMapper.convertValue(objectMapper.readTree(post), InstancesAttributesValuesData.class);
+        List<Long> dbIds = postData.getDbIds();
+        String className = postData.getClassName();
+        List<String> attributeNames = postData.getAttributeNames();
+        List<String> values = postData.getValues();
+        if (dbIds.size() == 0 || attributeNames.size() == 0 || values.size() == 0) {
+            throw new Exception("One of the required parameters is missing");
+        }
+        List<Instance> valueInstances = null;
+        for (Long dbId : dbIds) {
+            Instance instance = neo4JAdaptor.getInstance(className, dbId);
+            SchemaClass sc = instance.getSchemClass();
+            if (valueInstances == null && attributeNames.size() > 0) {
+                valueInstances = new ArrayList(values.size());
+                GKSchemaAttribute att = (GKSchemaAttribute) sc.getAttribute(attributeNames.get(0));
+                if (att.isInstanceTypeAttribute()) {
+                    for (String value : values) {
+                        try {
+                            Long valueDBID = Long.parseLong(value);
+                            // The assumption is that the instance is in the cache (hence className argument below set to null)
+                            valueInstances.add(neo4JAdaptor.getInstance(null, valueDBID));
+                        } catch (NumberFormatException e) {
+                            throw new Exception("Could not parse DB_ID in: " + value);
+                        }
+                    }
+                }
+            }
+
+            for (String attributeName : attributeNames) {
+                GKSchemaAttribute att = (GKSchemaAttribute) sc.getAttribute(attributeName);
+                if (att.isMultiple()) {
+                    if (att.isInstanceTypeAttribute()) {
+                        instance.setAttributeValue(att, valueInstances);
+                    } else {
+                        instance.setAttributeValue(att, values);
+                    }
+                } else {
+                    if (att.isInstanceTypeAttribute()) {
+                        instance.setAttributeValue(att, valueInstances.get(0));
+                    } else {
+                        instance.setAttributeValue(att, values.get(0));
+                    }
+                }
             }
         }
     }

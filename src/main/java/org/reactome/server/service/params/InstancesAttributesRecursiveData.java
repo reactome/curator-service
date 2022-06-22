@@ -4,17 +4,17 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class LoadInstancesClassAttributesData {
+public class InstancesAttributesRecursiveData {
     private List<Long> dbIds;
-    private List<List> classAttributeNames;
+    private List<List<String>> classAttributeNames;
     private Boolean recursive;
 
-    public LoadInstancesClassAttributesData(
+    public InstancesAttributesRecursiveData(
             @JsonProperty("dbIds") List<Long> dbIds,
-            @JsonProperty("classAttributeNames") List<List> classAttributeNames,
+            @JsonProperty("classAttributeNames") List<List<String>> attributeNames,
             @JsonProperty("recursive") Boolean recursive) {
         this.dbIds = dbIds;
-        this.classAttributeNames = classAttributeNames;
+        this.classAttributeNames = attributeNames;
         this.recursive = recursive;
     }
 
@@ -26,11 +26,11 @@ public class LoadInstancesClassAttributesData {
         this.dbIds = dbIds;
     }
 
-    public List<List> getClassAttributeNames() {
+    public List<List<String>> getClassAttributeNames() {
         return classAttributeNames;
     }
 
-    public void setClassAttributeNames(List<List> classAttributeNames) {
+    public void setClassAttributeNames(List<List<String>> classAttributeNames) {
         this.classAttributeNames = classAttributeNames;
     }
 

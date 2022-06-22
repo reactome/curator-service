@@ -4,11 +4,11 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class FetchInstancesAttributesData {
+public class InstancesClassData {
     private List<Long> dbIds;
     private String className;
 
-    public FetchInstancesAttributesData(
+    public InstancesClassData(
             @JsonProperty("dbIds") List<Long> dbIds,
             @JsonProperty("className") String className) {
         this.dbIds = dbIds;

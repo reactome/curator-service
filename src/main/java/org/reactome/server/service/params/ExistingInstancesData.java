@@ -4,12 +4,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
-public class ExistingInstancesAttributesData {
+public class ExistingInstancesData {
     private List<Long> dbIds;
     private Boolean checkCache;
     private Boolean inverse;
 
-    public ExistingInstancesAttributesData(
+    public ExistingInstancesData(
             @JsonProperty("dbIds") List<Long> dbIds,
             @JsonProperty("checkCache") Boolean checkCache,
             @JsonProperty("inverse") Boolean inverse) {

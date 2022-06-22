@@ -4,11 +4,11 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class LoadInstancesAttributesData {
+public class InstancesAttributesData {
     private List<Long> dbIds;
     private List<String> attributeNames;
 
-    public LoadInstancesAttributesData(
+    public InstancesAttributesData(
             @JsonProperty("dbIds") List<Long> dbIds,
             @JsonProperty("attributeNames") List attributeNames) {
         this.dbIds = dbIds;
