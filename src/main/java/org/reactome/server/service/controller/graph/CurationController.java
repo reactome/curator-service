@@ -261,7 +261,7 @@ public class CurationController {
                     // content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"classAttributeNames\" : [[\"PathwayDiagram\",\"storedATXML\"]], \"recursive\" : \"true\"}"))
                     // 2. A list of attribute names, each in any class
                     content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"classAttributeNames\" : [[\"\",\"storedATXML\"]], \"recursive\" : \"true\"}"))
-                    // 3. All attributes of class with dbId: 5263598 and all its subclasses
+                    // 3. All attributes of instance with dbId: 5263598 and all subclasses of that instance's class
                     // content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"classAttributeNames\" : [], \"recursive\" : \"true\"}"))
             )
             @RequestBody String post) throws Exception {
@@ -310,6 +310,12 @@ public class CurationController {
             }
         }
         neo4JAdaptor.loadInstanceAttributeValues(instances, attributes, postData.getRecursive());
+        if (postData.getClassAttributeNames().size() == 0) {
+            // We must have loaded all attributes - hence set the isInflated flag to true
+            for (Iterator ii = instances.iterator(); ii.hasNext(); ) {
+                ((GKInstance) ii.next()).setIsInflated(true);
+            }
+        }
         System.out.println(((GKInstance) instances.iterator().next()).getAttributes().keySet());
     }
 
@@ -452,6 +458,9 @@ public class CurationController {
                     content = @Content(examples = @ExampleObject(
                             "{ \"dbIds\" : [9612973], \"className\" : \"Pathway\", " +
                                     "\"attributeNames\" : [\"_displayName\"], \"values\" : [\"Autophagy1\"]}"))
+                    /* content = @Content(examples = @ExampleObject(
+                    "{ \"dbIds\" : [9612973], \"className\" : \"Pathway\", " +
+                            "\"attributeNames\" : [\"hasEvent\"], \"values\" : [\"69273\", \"69756\"]}")) */
             )
             @RequestBody String post) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
@@ -472,11 +481,11 @@ public class CurationController {
                 valueInstances = new ArrayList(values.size());
                 GKSchemaAttribute att = (GKSchemaAttribute) sc.getAttribute(attributeNames.get(0));
                 if (att.isInstanceTypeAttribute()) {
+                    String allowedClassName = ((GKSchemaClass) att.getAllowedClasses().iterator().next()).getName();
                     for (String value : values) {
                         try {
                             Long valueDBID = Long.parseLong(value);
-                            // The assumption is that the instance is in the cache (hence className argument below set to null)
-                            valueInstances.add(neo4JAdaptor.getInstance(null, valueDBID));
+                            valueInstances.add(neo4JAdaptor.getInstance(allowedClassName, valueDBID));
                         } catch (NumberFormatException e) {
                             throw new Exception("Could not parse DB_ID in: " + value);
                         }
@@ -500,6 +509,59 @@ public class CurationController {
                     }
                 }
             }
+        }
+    }
+
+    @Operation(summary = "Force-stores in Neo4J instances (of class: className) corresponding to dbIds list provided.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/store", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public void txStoreInstance(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a class",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"className\" : \"PathwayDiagram\"}"))
+
+            )
+            @RequestBody String post) throws Exception {
+        infoLogger.info("Force-store in Neo4J instances (of class: className) corresponding to dbIds list provided.");
+        ObjectMapper objectMapper = new ObjectMapper();
+        InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
+        List<Long> dbIds = postData.getDbIds();
+        String className = postData.getClassName();
+        for (Long dbId : dbIds) {
+            GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
+            neo4JAdaptor.txStoreInstance(instance, true);
+        }
+    }
+
+    @Operation(summary = "Force-updates in Neo4J instances (of class: className) corresponding to dbIds list provided.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/update", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public void txUpdateInstance(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a class",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"className\" : \"PathwayDiagram\"}"))
+
+            )
+            @RequestBody String post) throws Exception {
+        infoLogger.info("Force-store in Neo4J instances (of class: className) corresponding to dbIds list provided.");
+        ObjectMapper objectMapper = new ObjectMapper();
+        InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
+        List<Long> dbIds = postData.getDbIds();
+        String className = postData.getClassName();
+        for (Long dbId : dbIds) {
+            GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
+            if (!instance.isInflated()) {
+                throw new Exception("Instance corresponding to DB_ID: " + dbId + " is not inflated - cannot update");
+            }
+            neo4JAdaptor.txUpdateInstance((GKInstance) neo4JAdaptor.getInstance(className, dbId));
         }
     }
 }
