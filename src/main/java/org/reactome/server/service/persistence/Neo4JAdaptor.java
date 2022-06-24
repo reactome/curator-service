@@ -86,6 +86,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      */
     public void refresh() {
         instanceCache.clear();
+        attributeValuesCache.clear();
     }
 
     public void cleanUp() throws Exception {
@@ -129,7 +130,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
             String operand = getQueryOperand(className, att.getName());
             query.append(operand).append("[r:").append(att.getName()).append("]->(s:").append(allowedClassName).append(") RETURN DISTINCT n.DB_ID, s.DB_ID");
             if (att.isMultiple()) {
-                query.append(", r.order");
+                query.append(", r.order, r.stoichiometry");
             }
         }
         // DEBUG System.out.println(query);
@@ -168,8 +169,14 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     // Retrieve sorted results
                     for (Record rec : results) {
                         Long dbId = rec.get(0).asLong();
+                        Long stoichiometry = rec.get(3).asLong();
                         if (rec.get(1) != NullValue.NULL) {
-                            attributeValuesCache.addValue(className, att.getName(), dbId, rec.get(1));
+                            Long cnt = 0L;
+                            // 'Explode' each value into the number of duplicates equal to stoichiometry of the relationship
+                            while (cnt < stoichiometry) {
+                                attributeValuesCache.addValue(className, att.getName(), dbId, rec.get(1));
+                                cnt++;
+                            }
                         }
                     }
                 }
@@ -263,7 +270,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 StringBuilder query = new StringBuilder(queryRoot.toString()).append("-[r:").append(a.getName());
                 query.append("]").append(operand).append("(s:").append(allowedClassName).append(") RETURN DISTINCT s.DB_ID, type(r)");
                 if (a.isMultiple()) {
-                    query.append(", r.order");
+                    query.append(", r.order, r.stoichiometry");
                 }
                 cypherQueries.put(query.toString(), Collections.singletonList(a));
             }
@@ -355,8 +362,16 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                                                 .filter(p -> p.get(1).asString().equals(gkAtt.getName())).collect(Collectors.toList());
                                         for (Record rec : resultsForAttr) {
                                             Value val = rec.get(0);
-                                            if (val != NullValue.NULL)
-                                                values.add(val);
+                                            Long stoichiometry = rec.get(3).asLong();
+                                            if (val != NullValue.NULL) {
+                                                Long cnt = 0L;
+                                                // 'Explode' each value into the number of duplicates equal to stoichiometry of the relationship
+                                                while (cnt < stoichiometry) {
+                                                    values.add(val);
+                                                    cnt++;
+                                                }
+                                            }
+
                                         }
                                         handleAttributeValue(ins, gkAtt, values, recursive);
                                     }
@@ -598,8 +613,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
             Object value = aqr.getValue();
             if (att.isInstanceTypeAttribute()) {
                 // Instance attribute
+                String operand = getQueryOperand(att.getOrigin().getName(), att.getName());
                 if (!aqr.getOperator().equals("IS NULL")) {
-                    String operand = getQueryOperand(aqr.getCls().getName(), att.getName());
                     query.append(operand).append("[:").append(attName).append("]->(s").append(pos);
                     if (aqr instanceof Neo4JAdaptor.ReverseAttributeQueryRequest) {
                         query.append(":").append(aqr.getCls().getName());
@@ -1126,18 +1141,33 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
             Exception {
         SchemaClass cls = instance.getSchemClass();
         if (att.getName().equals(Schema.DB_ID_NAME)) return;
-        List attVals = instance.getAttributeValuesList(att.getName());
+        List<GKInstance> attVals = instance.getAttributeValuesList(att.getName());
         if ((attVals == null) || (attVals.isEmpty())) return;
         List<String> stmts = new ArrayList();
         if (att.isInstanceTypeAttribute()) {
-            for (GKInstance attrValInstance : (List<GKInstance>) attVals) {
+            Set<Long> processedDBIDs = new HashSet();
+            int order = 0;
+            for (GKInstance attrValInstance : attVals) {
                 Long valDbID;
                 if (recursive)
                     valDbID = storeInstance(attrValInstance, tx);
                 else
                     valDbID = attrValInstance.getDBID();
-                StringBuilder stmt = new StringBuilder("MATCH (n:").append(cls.getName()).append("{").append("DB_ID:").append(instance.getDBID()).append("}) ").append("MATCH (p:").append(attrValInstance.getSchemClass().getName()).append("{").append("DB_ID:").append(valDbID).append("})").append(" CREATE (n)-[:").append(att.getName()).append("]->(p)");
-                stmts.add(stmt.toString());
+                if (!processedDBIDs.contains(valDbID)) {
+                    // Compress potentially multiple duplicate values into a single stoichiometry value
+                    long stoichiometry = attVals.stream().filter(v -> v.getDBID().longValue() == valDbID.longValue()).count();
+                    // E.g. select * from Complex_2_hasComponent where DB_ID = 2247475 and hasComponent = 2239405 -> stoichiometry = 670
+                    StringBuilder stmt = new StringBuilder("MATCH (n:").append(cls.getName())
+                            .append("{").append("DB_ID:").append(instance.getDBID()).append("}) ")
+                            .append("MATCH (p:").append(attrValInstance.getSchemClass().getName()).append("{")
+                            .append("DB_ID:").append(valDbID).append("})")
+                            .append(" CREATE (n)-[:").append(att.getName())
+                            .append("{stoichiometry:").append(stoichiometry).append(",order:").append(order)
+                            .append("}").append("]->(p)");
+                    stmts.add(stmt.toString());
+                    processedDBIDs.add(valDbID);
+                    order++;
+                }
             }
         } else {
             Object value = instance.getAttributeValue(att.getName());
