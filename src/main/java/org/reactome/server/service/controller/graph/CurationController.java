@@ -561,7 +561,34 @@ public class CurationController {
             if (!instance.isInflated()) {
                 throw new Exception("Instance corresponding to DB_ID: " + dbId + " is not inflated - cannot update");
             }
-            neo4JAdaptor.txUpdateInstance((GKInstance) neo4JAdaptor.getInstance(className, dbId));
+            neo4JAdaptor.txUpdateInstance(instance);
         }
     }
+
+    @Operation(summary = "Delete from Neo4J instances corresponding to dbIds list provided, " +
+            "together with their relationships (but not instances at the end of those relationships")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/delete", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public void txDeleteInstance(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : []}"))
+
+            )
+            @RequestBody String post) throws Exception {
+        infoLogger.info("Delete from Neo4J instances corresponding to dbIds list provided.");
+        ObjectMapper objectMapper = new ObjectMapper();
+        InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
+        List<Long> dbIds = postData.getDbIds();
+        String className = postData.getClassName();
+        for (Long dbId : dbIds) {
+            GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
+            neo4JAdaptor.txDeleteInstance(instance);
+        }
+    }
+
 }
