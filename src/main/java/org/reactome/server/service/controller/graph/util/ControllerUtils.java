@@ -44,8 +44,7 @@ public class ControllerUtils {
             } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
                 display = dbo.get_displayName();
             }
-            String id = dbo.getStId();
-            return ((id!=null && !id.isEmpty()) ? id : dbo.getDB_ID()) + "\t" + display + "\t" + dbo.getSchemaClass();
+            return dbo.getDB_ID() + "\t" + display;
         }
         if (object instanceof Collection){
             Collection<?> list = (Collection<?>) object;

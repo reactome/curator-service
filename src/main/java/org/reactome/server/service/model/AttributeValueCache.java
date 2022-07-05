@@ -9,19 +9,18 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class AttributeValueCache {
     // Class Name -> Attribute Name -> DB_ID -> List<Value>
-    private Map<String, Map<String, Map<Long, List<Value>>>> cache = new ConcurrentHashMap<>();
+    private Map<String, Map<String, Map<Long, List<AttValCacheRecord>>>> cache = new ConcurrentHashMap<>();
 
     public void clear() {
         cache.clear();
     }
 
-    public Boolean hasValues(String className, String attributeName) {
+    public Boolean inCacheAlready(String className, String attributeName) {
         return cache.containsKey(className) &&
-                cache.get(className).containsKey(attributeName) &&
-                cache.get(className).get(attributeName).keySet().size() > 0;
+                cache.get(className).containsKey(attributeName);
     }
 
-    public List<Value> getValues(String className, String attributeName, Long dbId) {
+    public List<AttValCacheRecord> getValues(String className, String attributeName, Long dbId) {
         if (cache.containsKey(className) &&
                 cache.get(className).containsKey(attributeName) &&
                 cache.get(className).get(attributeName).containsKey(dbId))
@@ -30,16 +29,50 @@ public class AttributeValueCache {
         return null;
     }
 
-    public void addValue(String className, String attributeName, Long dbId, Value value) {
+    public void addInstanceValue(String className, String attributeName, Long dbId, Value value, String valueSchemaClass) {
+        addClassAttribute(className, attributeName);
+        if (!cache.get(className).get(attributeName).containsKey(dbId)) {
+            cache.get(className).get(attributeName).put(dbId, new ArrayList<AttValCacheRecord>());
+        }
+        cache.get(className).get(attributeName).get(dbId).add(new AttValCacheRecord(value, valueSchemaClass));
+    }
+
+    public void addPrimitiveValue(String className, String attributeName, Long dbId, Value value) {
+        addClassAttribute(className, attributeName);
+        if (!cache.get(className).get(attributeName).containsKey(dbId)) {
+            cache.get(className).get(attributeName).put(dbId, new ArrayList<AttValCacheRecord>());
+        }
+        cache.get(className).get(attributeName).get(dbId).add(new AttValCacheRecord(value));
+    }
+
+    public void addClassAttribute(String className, String attributeName) {
         if (!cache.containsKey(className)) {
-            cache.put(className, new ConcurrentHashMap<String, Map<Long, List<Value>>>());
+            cache.put(className, new ConcurrentHashMap<String, Map<Long, List<AttValCacheRecord>>>());
         }
         if (!cache.get(className).containsKey(attributeName)) {
-            cache.get(className).put(attributeName, new ConcurrentHashMap<Long, List<Value>>());
+            cache.get(className).put(attributeName, new ConcurrentHashMap<Long, List<AttValCacheRecord>>());
         }
-        if (!cache.get(className).get(attributeName).containsKey(dbId)) {
-            cache.get(className).get(attributeName).put(dbId, new ArrayList<Value>());
+    }
+
+    public static class AttValCacheRecord {
+        private Value value;
+        private String schemaClass;
+
+        public AttValCacheRecord(Value value, String schemaClass) {
+            this.value = value;
+            this.schemaClass = schemaClass;
         }
-        cache.get(className).get(attributeName).get(dbId).add(value);
+
+        public AttValCacheRecord(Value value) {
+            this.value = value;
+        }
+
+        public Value getValue() {
+            return value;
+        }
+
+        public String getSchemaClass() {
+            return schemaClass;
+        }
     }
 }
