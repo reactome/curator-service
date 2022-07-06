@@ -1,19 +1,10 @@
 [<img src=https://user-images.githubusercontent.com/6883670/31999264-976dfb86-b98a-11e7-9432-0316345a72ea.png height=75 />](https://reactome.org)
 
-# Reactome Content Service
+# Reactome Curator Service
 
-## What is the Reactome Content Service
+## What is the Reactome Curator Service
 
-The Content Service is the Reactome API to access the data. It is based on Spring MVC, based on REST and fully documented in Open API (previously Swagger). Through the ContentService API you'll have access to the Graph Database, Interactors and SolR Search.
-
-#### Installation Guide
-
-* :warning: Pre-Requirement (in the given order)
-    1. Maven 3.X - [Installation Guide](http://maven.apache.org/install.html)
-    2. Reactome Graph Database - [Installation Guide](https://reactome.org/dev/graph-database/)
-    3. Interactor Database - [Installation Guide](https://github.com/reactome-pwp/interactors-core)
-    4. Search SolR Index - [search-indexer](http://github.com/reactome/search-indexer)
-    5. Mail Server (if you don't have a valid SMTP Server, please refer to [FakeSMTP](http://nilhcem.com/FakeSMTP/index.html)
+The Curator Service is the Reactome CRUD API to access curation-related data in Neo4J graph database. It is based on Spring MVC, based on REST and fully documented in Open API (previously Swagger).
 
 ##### Git Clone
 
@@ -114,6 +105,3 @@ INFO: Starting ProtocolHandler ["http-bio-8686"]
 
 * :computer: Access your local [installation](http://localhost:8686/)
 
-<img width="966" alt="content-service-1" src="https://cloud.githubusercontent.com/assets/6883670/23139777/05b17160-f7a6-11e6-9199-bfad5d179268.png">
-<img width="969" alt="content-service-2" src="https://cloud.githubusercontent.com/assets/6883670/23139778/05b24c5c-f7a6-11e6-89c6-a833c2a5f133.png">
-<img width="976" alt="content-service-3" src="https://cloud.githubusercontent.com/assets/6883670/23139779/05b62c64-f7a6-11e6-811e-47987e28e23d.png">
