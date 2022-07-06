@@ -21,7 +21,7 @@ Please refer to Maven Profile [Guideline](http://maven.apache.org/guides/introdu
 
 ```html
 <profile>
-    <id>reactome</id>
+    <id>Reactome-Server</id>
     <properties>
         <mail.host>localhost</mail.host>
         <mail.port>8181</mail.port>
@@ -90,9 +90,9 @@ Please refer to Maven Profile [Guideline](http://maven.apache.org/guides/introdu
 </profile>
 ```
 
-##### Running ContentService activating ```reactome``` profile.
+##### Running ContentService activating ```Reactome-Server``` profile.
 ```console
-mvn tomcat7:run -P reactome
+mvn spring-boot:run -P Reactome-Server
 ```
 
 Check if Tomcat has been initialised
