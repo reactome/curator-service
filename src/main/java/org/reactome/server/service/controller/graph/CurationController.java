@@ -12,7 +12,9 @@ import org.neo4j.driver.Value;
 import org.reactome.server.service.model.GKInstance;
 import org.reactome.server.service.model.Instance;
 import org.reactome.server.service.params.*;
+import org.reactome.server.service.persistence.AttributeQueryRequest;
 import org.reactome.server.service.persistence.Neo4JAdaptor;
+import org.reactome.server.service.persistence.QueryRequest;
 import org.reactome.server.service.schema.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -226,7 +228,7 @@ public class CurationController {
         infoLogger.info("Fetch instances by a list of quadruples: className, attributeName, operator and value");
         ObjectMapper objectMapper = new ObjectMapper();
         List<List<String>> postData = objectMapper.convertValue(objectMapper.readTree(post), List.class);
-        List<Neo4JAdaptor.QueryRequest> aqrList = new ArrayList<>();
+        List<QueryRequest> aqrList = new ArrayList<>();
         for (List<String> rec : postData) {
             String className = rec.get(0);
             String attributeName = rec.get(1);
@@ -237,7 +239,7 @@ public class CurationController {
             } catch (NumberFormatException nfe) {
                 attributeValue = rec.get(3);
             }
-            aqrList.add(neo4JAdaptor.createAttributeQueryRequest(className, attributeName, operator, attributeValue));
+            aqrList.add(new AttributeQueryRequest(neo4JAdaptor.getSchema(), className, attributeName, operator, attributeValue));
         }
         Set<Instance> instances = neo4JAdaptor.fetchInstance(aqrList);
         // Sanity filter: Return maximum 100 instances

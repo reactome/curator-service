@@ -1,5 +1,6 @@
 package org.reactome.server.service.persistence;
 
+import org.apache.commons.lang.NotImplementedException;
 import org.reactome.server.service.model.*;
 import org.reactome.server.service.schema.*;
 import org.reactome.server.service.utils.StringUtils;
@@ -115,7 +116,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         if (attNameField != null) {
             annotation = attNameField.getAnnotation(Relationship.class);
         }
-        if ((qr != null && qr instanceof Neo4JAdaptor.ReverseAttributeQueryRequest) ||
+        if ((qr != null && qr instanceof ReverseAttributeQueryRequest) ||
                 (annotation != null && ((Relationship) annotation).direction() == Relationship.Direction.INCOMING)) {
             ret.add("<-");
             ret.add("-");
@@ -593,7 +594,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
 
     public Collection fetchInstanceByAttribute(String className, String attributeName, String operator, Object
             value) throws Exception {
-        AttributeQueryRequest aqr = new AttributeQueryRequest(className, attributeName, operator, value);
+        AttributeQueryRequest aqr = new AttributeQueryRequest(schema, className, attributeName, operator, value);
         return fetchInstance(aqr);
     }
 
@@ -639,7 +640,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         String whereClauseKeyWord = " WHERE";
         Integer pos = 1;
         for (Iterator i = aqrList.iterator(); i.hasNext(); ) {
-            Neo4JAdaptor.QueryRequest aqr = (Neo4JAdaptor.QueryRequest) i.next();
+            QueryRequest aqr = (QueryRequest) i.next();
             query.append(" MATCH (n:").append(aqr.getCls().getName()).append(")");
             SchemaAttribute att = aqr.getAttribute();
             String attName = att.getName();
@@ -1522,7 +1523,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 if (matchingDBIDs == null) {
                     return null;
                 } else {
-                    aqrList.add(new AttributeQueryRequest(rootClassName, Schema.DB_ID_NAME, "=", matchingDBIDs));
+                    aqrList.add(new AttributeQueryRequest(schema, rootClassName, Schema.DB_ID_NAME, "=", matchingDBIDs));
                 }
             }
         } else {
@@ -1534,7 +1535,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 if (matchingDBIDs == null) {
                     return null;
                 } else {
-                    aqrList.add(new AttributeQueryRequest(rootClassName, Schema.DB_ID_NAME, "=", matchingDBIDs));
+                    aqrList.add(new AttributeQueryRequest(schema, rootClassName, Schema.DB_ID_NAME, "=", matchingDBIDs));
                 }
             }
         }
@@ -1970,7 +1971,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @param dbID db id value to check to see if it exists in the database
      * @return true if existing; false otherwise
      */
-    public boolean exist(Long dbID) {
+    public boolean exist(Long dbID) throws NotImplementedException {
         StringBuilder query = new StringBuilder("MATCH (n) WHERE n.DB_ID = ").append(dbID).append(" RETURN n.DB_ID");
         try (Session session = driver.session(SessionConfig.forDatabase(this.database))) {
             Result result = session.run(query.toString());
@@ -2095,26 +2096,6 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         return fetchInstanceByAttribute(((GKSchema) schema).getRootClass().getName(), "DB_ID", "=", dbIDs);
     }
 
-    public AttributeQueryRequest createAttributeQueryRequest(String clsName, String attName, String
-            operator, Object value) throws InvalidClassException, InvalidAttributeException {
-        return new AttributeQueryRequest(clsName, attName, operator, value);
-    }
-
-    public AttributeQueryRequest createAttributeQueryRequest(SchemaAttribute attribute, String operator, Object
-            value) throws InvalidAttributeException {
-        return new AttributeQueryRequest(attribute, operator, value);
-    }
-
-    public ReverseAttributeQueryRequest createReverseAttributeQueryRequest(String clsName, String
-            attName, String operator, Object value) throws Exception {
-        return new ReverseAttributeQueryRequest(clsName, attName, operator, value);
-    }
-
-    public ReverseAttributeQueryRequest createReverseAttributeQueryRequest(SchemaClass cls, SchemaAttribute
-            att, String operator, Object value) throws InvalidAttributeException {
-        return new ReverseAttributeQueryRequest(cls, att, operator, value);
-    }
-
     // Adapted from https://stackoverflow.com/questions/520328/can-you-find-all-classes-in-a-package-using-reflection
     private static Collection<String> getClassNames(final String pack) throws java.io.IOException {
         final StandardJavaFileManager fileManager = ToolProvider.getSystemJavaCompiler().getStandardFileManager(null, null, null);
@@ -2133,184 +2114,5 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     return null;
                 })
                 .filter(x -> x != null).collect(Collectors.toCollection(ArrayList::new));
-    }
-
-    public class QueryRequestList extends ArrayList<QueryRequest> {
-
-    }
-
-    public abstract class QueryRequest {
-        protected SchemaClass cls;
-        protected SchemaAttribute attribute;
-        protected String operator;
-        protected Object value;
-
-        /**
-         * Returns the SchemaAttribute object of the query request which defines which
-         * instance attribute of a class to search
-         *
-         * @return SchemaAttribute of the query request
-         */
-        public SchemaAttribute getAttribute() {
-            return attribute;
-        }
-
-        /**
-         * Returns the SchemaClass object of the query request which defines which
-         * class to search
-         *
-         * @return SchemaClass of the query request
-         */
-        public SchemaClass getCls() {
-            return cls;
-        }
-
-        /**
-         * Returns a String value of the operator of the query request which defines how
-         * the search is restricted
-         *
-         * @return Operator of the query request
-         */
-        public String getOperator() {
-            return operator;
-        }
-
-        /**
-         * Returns the value of the search to check given the class, attribute and operator
-         * restrictions defined
-         *
-         * @return Value of the query request
-         */
-        public Object getValue() {
-            return value;
-        }
-
-        /**
-         * Set the SchemaAttribute object of the query request which defines which
-         * instance attribute of a class to search
-         *
-         * @param attribute SchemaAttribute of the query request
-         */
-        public void setAttribute(SchemaAttribute attribute) {
-            this.attribute = attribute;
-        }
-
-        /**
-         * The SchemaClass object of the query request which defines which class to search
-         *
-         * @param class1 SchemaClass of the query request
-         */
-        public void setCls(SchemaClass class1) {
-            cls = class1;
-        }
-
-        /**
-         * A String value of the operator of the query request which defines how the search is restricted
-         *
-         * @param string Operator of the query request
-         */
-        public void setOperator(String string) {
-            operator = string;
-        }
-
-        /**
-         * The value of the search to check given the class, attribute and operator restrictions
-         * defined
-         *
-         * @param object Values of the query request
-         */
-        public void setValue(Object object) {
-            value = object;
-        }
-    }
-
-    public class AttributeQueryRequest extends QueryRequest {
-
-        public AttributeQueryRequest(String clsName, String attName, String operator, Object value) throws InvalidClassException, InvalidAttributeException {
-            schema.isValidClassOrThrow(clsName);
-            cls = schema.getClassByName(clsName);
-            // getAttribute checks for the validity
-            attribute = cls.getAttribute(attName).getOrigin().getAttribute(attName);
-            if (operator == null || operator.equals("")) {
-                operator = "=";
-            }
-            this.operator = operator.toUpperCase();
-            this.value = value;
-        }
-
-        public AttributeQueryRequest(SchemaAttribute attribute, String operator, Object value) throws InvalidAttributeException {
-            cls = attribute.getOrigin();
-            //this.attribute = attribute;
-            this.attribute = attribute.getOrigin().getAttribute(attribute.getName());
-            if (operator == null || operator.equals("")) {
-                operator = "=";
-            }
-            this.operator = operator.toUpperCase();
-            this.value = value;
-        }
-
-        public AttributeQueryRequest(SchemaClass cls, SchemaAttribute attribute, String operator, Object value) throws InvalidAttributeException {
-            this.cls = cls;
-            this.attribute = attribute.getOrigin().getAttribute(attribute.getName());
-            if (operator == null || operator.equals("")) {
-                operator = "=";
-            }
-            this.operator = operator.toUpperCase();
-            this.value = value;
-        }
-    }
-
-    public class ReverseAttributeQueryRequest extends QueryRequest {
-
-        public ReverseAttributeQueryRequest(SchemaAttribute attribute, String operator, Long dbID) throws InvalidAttributeException {
-            cls = attribute.getOrigin();
-            //this.attribute = attribute;
-            this.attribute = attribute.getOrigin().getAttribute(attribute.getName());
-            if (operator == null || operator.equals("")) {
-                operator = "=";
-            }
-            this.operator = operator.toUpperCase();
-            this.value = dbID;
-        }
-
-        public ReverseAttributeQueryRequest(String clsName, String attName, String operator, Object value) throws Exception {
-            schema.isValidClassOrThrow(clsName);
-            cls = schema.getClassByName(clsName);
-            Collection<GKSchemaAttribute> reverseAttributes = ((GKSchemaClass) cls).getReferersByName(attName);
-            Set<GKSchemaClass> origins = new HashSet<GKSchemaClass>();
-            for (GKSchemaAttribute revAtt : reverseAttributes) {
-                origins.add((GKSchemaClass) revAtt.getOrigin());
-            }
-            //System.out.println(origins);
-            if (origins.size() > 1) {
-                throw new Exception("Class '" + clsName + "' has many referers with attribute '" + attName + "' - don't know which one to use. Use ReverseAttributeQueryRequest(SchemaClass cls, " + "SchemaAttribute att, String operator, Object value) to construct this query.");
-            }
-            attribute = origins.iterator().next().getAttribute(attName);
-            if (operator == null || operator.equals("")) {
-                operator = "=";
-            }
-            this.operator = operator.toUpperCase();
-            this.value = value;
-        }
-
-        /**
-         * An overloaded constructor with class and attributes specified so no checking is needed.
-         *
-         * @param cls      SchemaClass to query
-         * @param att      SchemaAttribute to query
-         * @param operator Operator to use in query
-         * @param value    Attribute value to query
-         * @throws InvalidAttributeException Thrown if the SchemaAttribute is invalid
-         */
-        public ReverseAttributeQueryRequest(SchemaClass cls, SchemaAttribute att, String operator, Object value) throws InvalidAttributeException {
-            this.cls = cls;
-            attribute = att.getOrigin().getAttribute(att.getName());
-            if (operator == null || operator.equals("")) {
-                operator = "=";
-            }
-            this.operator = operator.toUpperCase();
-            this.value = value;
-        }
-
     }
 }
