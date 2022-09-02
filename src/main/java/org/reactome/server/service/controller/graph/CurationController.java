@@ -8,7 +8,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.neo4j.driver.Value;
+import org.neo4j.driver.*;
 import org.reactome.server.service.model.GKInstance;
 import org.reactome.server.service.model.Instance;
 import org.reactome.server.service.params.*;
@@ -425,7 +425,7 @@ public class CurationController {
     })
     @RequestMapping(value = "/instances/attributes/updateindb", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
-    public void txUpdateInstanceAttributes(
+    public void updateInstanceAttributes(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs, and a collection of attribute names",
                     required = true,
@@ -440,8 +440,13 @@ public class CurationController {
             // The assumption is that the instance is in the cache (hence className argument below set to null),
             // and that the attribute value has been updated in the cached instance but not yet in Neo4J
             Instance instance = neo4JAdaptor.getInstance(null, dbId);
-            for (String attributeName : attributeNames) {
-                neo4JAdaptor.txUpdateInstanceAttribute((GKInstance) instance, attributeName);
+            Driver driver = neo4JAdaptor.getConnection();
+            try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+                Transaction tx = session.beginTransaction();
+                for (String attributeName : attributeNames) {
+                    neo4JAdaptor.updateInstanceAttribute((GKInstance) instance, attributeName, tx);
+                }
+                tx.commit();
             }
         }
     }
@@ -520,7 +525,7 @@ public class CurationController {
     })
     @RequestMapping(value = "/instances/store", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
-    public void txStoreInstance(
+    public void storeInstances(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs, and a class",
                     required = true,
@@ -533,9 +538,14 @@ public class CurationController {
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
         String className = postData.getClassName();
-        for (Long dbId : dbIds) {
-            GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
-            neo4JAdaptor.txStoreInstance(instance, true);
+        Driver driver = neo4JAdaptor.getConnection();
+        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+            Transaction tx = session.beginTransaction();
+            for (Long dbId : dbIds) {
+                GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
+                neo4JAdaptor.storeInstance(instance, true, tx, true);
+            }
+            tx.commit();
         }
     }
 
@@ -545,7 +555,7 @@ public class CurationController {
     })
     @RequestMapping(value = "/instances/update", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
-    public void txUpdateInstance(
+    public void updateInstances(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs, and a class",
                     required = true,
@@ -558,12 +568,17 @@ public class CurationController {
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
         String className = postData.getClassName();
-        for (Long dbId : dbIds) {
-            GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
-            if (!instance.isInflated()) {
-                throw new Exception("Instance corresponding to DB_ID: " + dbId + " is not inflated - cannot update");
+        Driver driver = neo4JAdaptor.getConnection();
+        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+            Transaction tx = session.beginTransaction();
+            for (Long dbId : dbIds) {
+                GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
+                if (!instance.isInflated()) {
+                    throw new Exception("Instance corresponding to DB_ID: " + dbId + " is not inflated - cannot update");
+                }
+                neo4JAdaptor.updateInstance(instance, tx);
             }
-            neo4JAdaptor.txUpdateInstance(instance);
+            tx.commit();
         }
     }
 
@@ -574,7 +589,7 @@ public class CurationController {
     })
     @RequestMapping(value = "/instances/delete", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
-    public void txDeleteInstance(
+    public void deleteInstances(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs",
                     required = true,
@@ -587,10 +602,14 @@ public class CurationController {
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
         String className = postData.getClassName();
-        for (Long dbId : dbIds) {
-            GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
-            neo4JAdaptor.txDeleteInstance(instance);
+        Driver driver = neo4JAdaptor.getConnection();
+        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+            Transaction tx = session.beginTransaction();
+            for (Long dbId : dbIds) {
+                GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
+                neo4JAdaptor.deleteInstance(instance, tx);
+            }
+            tx.commit();
         }
     }
-
 }
