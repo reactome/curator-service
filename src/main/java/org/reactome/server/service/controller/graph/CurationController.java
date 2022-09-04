@@ -612,4 +612,50 @@ public class CurationController {
             tx.commit();
         }
     }
+
+    /*****************************
+     End-points below are experimental - an attempt to pull together DB insert/update/delete operations
+     that have to be done under one transaction.
+     *****************************/
+
+    @Operation(summary =
+            "Stores instance with DB_ID = storeDbId and set updateAttribute another " +
+            "instance (with DB_ID updateDbId) to the first instance. " +
+                    "An example of such operation can be found in CuratorTool " +
+                    " in e.g. IdentifierDatabase.incrementMostRecentStableIdentifier()")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/storeupdate", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public void storeUpdateInstances(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Json containing a collection of DB_IDs, and a class",
+                    required = true,
+                    content = @Content(examples = @ExampleObject("{ " +
+                            "\"storeDbId\" : -1, \"storeClassName\" : \"StableIdentifier\", " +
+                            "\"updateAttributeName\" : \"mostRecentStableIdentifier\", " +
+                            "\"updateDbId\" : -1, \"updateClassName\" : \"State\"}"))
+
+            )
+            @RequestBody String post) throws Exception {
+        infoLogger.info("Stores instance with DB_ID = storeDbId and set updateAttribute another instance (with DB_ID updateDbId) to the first instance");
+        ObjectMapper objectMapper = new ObjectMapper();
+        StoreUpdateInstancesData postData = objectMapper.convertValue(objectMapper.readTree(post), StoreUpdateInstancesData.class);
+        Long storeDbId = postData.getStoreDbId();
+        String storeClassName = postData.getStoreClassName();
+        Long updateDbId = postData.getUpdateDbId();
+        String updateClassName = postData.getUpdateClassName();
+        String updateAttributeName = postData.getUpdateAttributeName();
+        GKInstance storeInstance = (GKInstance) neo4JAdaptor.getInstance(storeClassName, storeDbId);
+        GKInstance updateInstance = (GKInstance) neo4JAdaptor.getInstance(updateClassName, updateDbId);
+        updateInstance.setAttributeValue(updateAttributeName, storeInstance);
+        Driver driver = neo4JAdaptor.getConnection();
+        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+            Transaction tx = session.beginTransaction();
+            neo4JAdaptor.storeInstance(storeInstance, tx);
+            neo4JAdaptor.updateInstanceAttribute(updateInstance, updateAttributeName, tx);
+            tx.commit();
+        }
+    }
 }
