@@ -140,7 +140,7 @@ public class CurationController {
         return existingDB_IDs;
     }
 
-    @Operation(summary = "Fetch instances by Class name and, optionally, by a list of DB_IDs")
+    @Operation(summary = "Fetch instances by a list of class names and, optionally, by a list of DB_IDs")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -148,34 +148,49 @@ public class CurationController {
     @ResponseBody
     public Collection<Instance> fetchInstances(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Json containing a collection of DB_IDs, and a class",
+                    description = "Json containing a collection of DB_IDs, and a collection of class names " +
+                            "(DB_ID in position N of the first collection corresponds to the class name in position N of the second collection",
                     required = true,
-                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"className\" : \"PathwayDiagram\"}"))
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"classNames\" : [\"PathwayDiagram\"]}"))
 
             )
             @RequestBody String post) throws Exception {
-        infoLogger.info("Fetch instances for a collection of DB_IDs");
+        infoLogger.info("Fetch instances for a collection of DB_IDs and class names. " +
+                "DB_ID in position N of the first collection corresponds to the class name in position N of the second collection");
         ObjectMapper objectMapper = new ObjectMapper();
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
-        Collection<Instance> instances;
-        String className = postData.getClassName();
+        Collection<Instance> instances = new ArrayList<>();
+        List<String> classNames = postData.getClassNames();
         if (dbIds.size() == 0) {
-            infoLogger.info("Fetch instances for a className");
-            instances = neo4JAdaptor.fetchInstancesByClass(className);
+            for (String className : classNames) {
+                infoLogger.info("Fetch instances for a className: " + className);
+                instances.addAll(neo4JAdaptor.fetchInstancesByClass(className));
+            }
         } else {
-            if (!className.equals("")) {
-                infoLogger.info("Fetch instances for a collection of DB_IDs and a className");
-                instances = neo4JAdaptor.fetchInstances(className, dbIds);
+            // dbIds are provided
+            boolean classNamesPresent = classNames.size() > 0;
+            if (classNamesPresent && dbIds.size() != classNames.size()) {
+                throw new Exception("If the list of DB_IDs is not empty, the list " +
+                        "of classNames should be either empty or the same size as that of DB_IDs ");
             } else {
-                instances = neo4JAdaptor.fetchInstance(dbIds);
+                if (classNamesPresent) {
+                    int cnt = 0;
+                    for (Long dbId : dbIds) {
+                        instances.addAll(neo4JAdaptor.fetchInstances(classNames.get(cnt), Collections.singletonList(dbId)));
+                        cnt++;
+                    }
+                } else {
+                    instances.addAll(neo4JAdaptor.fetchInstance(dbIds));
+                }
             }
         }
         return instances;
     }
 
-    @Operation(summary = "Tries to get instances of the given class, with DB_ID in list provided, from " +
-            " instance cache, if possible.  Otherwise, creates a new instance with " +
+    @Operation(summary = "Tries to get instances of class in the list of class names, with DB_ID in list provided " +
+            "(DB_ID in position N of the first collection corresponds to the class name in position N of the second collection) " +
+            " from instance cache, if possible.  Otherwise, creates a new instance with " +
             " the given DB_ID.  This new instance will be cached even if caching is switched off.")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
@@ -194,10 +209,17 @@ public class CurationController {
         ObjectMapper objectMapper = new ObjectMapper();
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
-        String className = postData.getClassName();
+        List<String> classNames = postData.getClassNames();
         List<Instance> instances = new ArrayList();
-        for (Long dbId : dbIds) {
-            instances.add(neo4JAdaptor.getInstance(className, dbId));
+        if (dbIds.size() != classNames.size()) {
+            throw new Exception("If the list of DB_IDs is not empty, the list " +
+                    "of classNames should be the same size as that of DB_IDs ");
+        } else {
+            int cnt = 0;
+            for (Long dbId : dbIds) {
+                instances.add(neo4JAdaptor.getInstance(classNames.get(cnt), dbId));
+                cnt++;
+            }
         }
         return instances;
     }
@@ -519,7 +541,8 @@ public class CurationController {
         }
     }
 
-    @Operation(summary = "Force-stores in Neo4J instances (of class: className) corresponding to dbIds list provided.")
+    @Operation(summary = "Force-stores in Neo4J instances of class names specified in a list, corresponding to dbIds list provided. " +
+            "(DB_ID in position N of the first collection corresponds to the class name in position N of the second collection")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -529,27 +552,35 @@ public class CurationController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs, and a class",
                     required = true,
-                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"className\" : \"PathwayDiagram\"}"))
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"classNames\" : []}"))
 
             )
             @RequestBody String post) throws Exception {
-        infoLogger.info("Force-store in Neo4J instances (of class: className) corresponding to dbIds list provided.");
+        infoLogger.info("Force-store in Neo4J instances of a list of class names corresponding to dbIds list provided.");
         ObjectMapper objectMapper = new ObjectMapper();
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
-        String className = postData.getClassName();
+        List<String> classNames = postData.getClassNames();
         Driver driver = neo4JAdaptor.getConnection();
-        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
-            Transaction tx = session.beginTransaction();
-            for (Long dbId : dbIds) {
-                GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
-                neo4JAdaptor.storeInstance(instance, true, tx, true);
+        if (dbIds.size() != classNames.size()) {
+            throw new Exception("If the list of DB_IDs is not empty, the list " +
+                    "of classNames should be the same size as that of DB_IDs ");
+        } else {
+            try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+                Transaction tx = session.beginTransaction();
+                int cnt = 0;
+                for (Long dbId : dbIds) {
+                    GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(classNames.get(cnt), dbId);
+                    neo4JAdaptor.storeInstance(instance, true, tx, true);
+                    cnt++;
+                }
+                tx.commit();
             }
-            tx.commit();
         }
     }
 
-    @Operation(summary = "Force-updates in Neo4J instances (of class: className) corresponding to dbIds list provided.")
+    @Operation(summary = "Force-updates in Neo4J instances of a list of class names  corresponding to dbIds list provided." +
+            "(DB_ID in position N of the first collection corresponds to the class name in position N of the second collection")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -559,7 +590,7 @@ public class CurationController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs, and a class",
                     required = true,
-                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"className\" : \"PathwayDiagram\"}"))
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"classNames\" : []}"))
 
             )
             @RequestBody String post) throws Exception {
@@ -567,22 +598,30 @@ public class CurationController {
         ObjectMapper objectMapper = new ObjectMapper();
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
-        String className = postData.getClassName();
-        Driver driver = neo4JAdaptor.getConnection();
-        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
-            Transaction tx = session.beginTransaction();
-            for (Long dbId : dbIds) {
-                GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
-                if (!instance.isInflated()) {
-                    throw new Exception("Instance corresponding to DB_ID: " + dbId + " is not inflated - cannot update");
+        List<String> classNames = postData.getClassNames();
+        if (dbIds.size() != classNames.size()) {
+            throw new Exception("If the list of DB_IDs is not empty, the list " +
+                    "of classNames should be the same size as that of DB_IDs ");
+        } else {
+            Driver driver = neo4JAdaptor.getConnection();
+            try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+                Transaction tx = session.beginTransaction();
+                int cnt = 0;
+                for (Long dbId : dbIds) {
+                    GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(classNames.get(cnt), dbId);
+                    if (!instance.isInflated()) {
+                        throw new Exception("Instance corresponding to DB_ID: " + dbId + " is not inflated - cannot update");
+                    }
+                    neo4JAdaptor.updateInstance(instance, tx);
+                    cnt++;
                 }
-                neo4JAdaptor.updateInstance(instance, tx);
+                tx.commit();
             }
-            tx.commit();
         }
     }
 
-    @Operation(summary = "Delete from Neo4J instances corresponding to dbIds list provided, " +
+    @Operation(summary = "Delete from Neo4J instances corresponding to dbIds list and class name list provided " +
+            "(DB_ID in position N of the first collection corresponds to the class name in position N of the second collection, " +
             "together with their relationships (but not instances at the end of those relationships")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
@@ -593,7 +632,7 @@ public class CurationController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Json containing a collection of DB_IDs",
                     required = true,
-                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : []}"))
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [], \"classNames\" : []}"))
 
             )
             @RequestBody String post) throws Exception {
@@ -601,15 +640,22 @@ public class CurationController {
         ObjectMapper objectMapper = new ObjectMapper();
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
-        String className = postData.getClassName();
+        List<String> classNames = postData.getClassNames();
         Driver driver = neo4JAdaptor.getConnection();
-        try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
-            Transaction tx = session.beginTransaction();
-            for (Long dbId : dbIds) {
-                GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(className, dbId);
-                neo4JAdaptor.deleteInstance(instance, tx);
+        if (dbIds.size() != classNames.size()) {
+            throw new Exception("If the list of DB_IDs is not empty, the list " +
+                    "of classNames should be the same size as that of DB_IDs ");
+        } else {
+            try (Session session = driver.session(SessionConfig.forDatabase(neo4JAdaptor.getDBName()))) {
+                Transaction tx = session.beginTransaction();
+                int cnt = 0;
+                for (Long dbId : dbIds) {
+                    GKInstance instance = (GKInstance) neo4JAdaptor.getInstance(classNames.get(cnt), dbId);
+                    neo4JAdaptor.deleteInstance(instance, tx);
+                    cnt++;
+                }
+                tx.commit();
             }
-            tx.commit();
         }
     }
 
@@ -620,7 +666,7 @@ public class CurationController {
 
     @Operation(summary =
             "Stores instance with DB_ID = storeDbId and set updateAttribute another " +
-            "instance (with DB_ID updateDbId) to the first instance. " +
+                    "instance (with DB_ID updateDbId) to the first instance. " +
                     "An example of such operation can be found in CuratorTool " +
                     " in e.g. IdentifierDatabase.incrementMostRecentStableIdentifier()")
     @ApiResponses({

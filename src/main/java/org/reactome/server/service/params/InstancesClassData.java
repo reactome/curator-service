@@ -6,13 +6,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class InstancesClassData {
     private List<Long> dbIds;
-    private String className;
+    private List<String> classNames;
 
     public InstancesClassData(
             @JsonProperty("dbIds") List<Long> dbIds,
-            @JsonProperty("className") String className) {
+            @JsonProperty("classNames") String className) {
         this.dbIds = dbIds;
-        this.className = className;
+        this.classNames = classNames;
     }
 
     public List<Long> getDbIds() {
@@ -23,11 +23,11 @@ public class InstancesClassData {
         this.dbIds = dbIds;
     }
 
-    public String getClassName() {
-        return className;
+    public List<String> getClassNames() {
+        return classNames;
     }
 
-    public void setClassName(String className) {
-        this.className = className;
+    public void setClassNames(List<String> classNames) {
+        this.classNames = classNames;
     }
 }
