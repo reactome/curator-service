@@ -696,7 +696,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 } else {
                     // Single value - either 1. null ("IS NULL" query) or Instance,
                     // or 2. an "IS NOT NULL" AttributeQueryRequest/ReverseAttributeQueryRequest.
-                    if (value == null || value instanceof org.reactome.server.service.model.Instance) {
+                    if (value == null || value.equals("") || value instanceof org.reactome.server.service.model.Instance) {
                         if (!aqr.getOperator().equals("IS NOT NULL")) {
                             if (!aqr.getOperator().equals("IS NULL")) {
                                 whereClause.append(whereClauseKeyWord).append(" s").append(pos).append(".DB_ID = ").append(((GKInstance) value).getDBID());
