@@ -10,7 +10,7 @@ public class InstancesClassData {
 
     public InstancesClassData(
             @JsonProperty("dbIds") List<Long> dbIds,
-            @JsonProperty("classNames") String className) {
+            @JsonProperty("classNames") List<String> classNames) {
         this.dbIds = dbIds;
         this.classNames = classNames;
     }

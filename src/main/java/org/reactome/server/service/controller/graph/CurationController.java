@@ -80,7 +80,7 @@ public class CurationController {
     @RequestMapping(value = "/cache/refresh", method = RequestMethod.GET)
     @ResponseBody
     public void refreshCache() {
-        infoLogger.info("Request for the Schema");
+        infoLogger.info("Request to refresh the cache");
         neo4JAdaptor.refresh();
     }
 
@@ -115,7 +115,7 @@ public class CurationController {
     @RequestMapping(value = "/cleanup", method = RequestMethod.GET)
     @ResponseBody
     public void cleanUp() throws Exception {
-        infoLogger.info("Request for the Schema");
+        infoLogger.info("Request to clean up cache, close connection, unset schema");
         neo4JAdaptor.cleanUp();
     }
 
@@ -155,8 +155,8 @@ public class CurationController {
 
             )
             @RequestBody String post) throws Exception {
-        infoLogger.info("Fetch instances for a collection of DB_IDs and class names. " +
-                "DB_ID in position N of the first collection corresponds to the class name in position N of the second collection");
+        infoLogger.info("Fetch instances for a collection of class names and, optionally, by a list of DB_IDs. " +
+                "If DB_IDs are provided, DB_ID in position N of the first collection corresponds to the class name in position N of the second collection");
         ObjectMapper objectMapper = new ObjectMapper();
         InstancesClassData postData = objectMapper.convertValue(objectMapper.readTree(post), InstancesClassData.class);
         List<Long> dbIds = postData.getDbIds();
@@ -172,7 +172,7 @@ public class CurationController {
             boolean classNamesPresent = classNames.size() > 0;
             if (classNamesPresent && dbIds.size() != classNames.size()) {
                 throw new Exception("If the list of DB_IDs is not empty, the list " +
-                        "of classNames should be either empty or the same size as that of DB_IDs ");
+                        "of classNames should be the same size as that of DB_IDs ");
             } else {
                 if (classNamesPresent) {
                     int cnt = 0;
@@ -197,12 +197,11 @@ public class CurationController {
     })
     @RequestMapping(value = "/instances/get/byclassname", method = RequestMethod.POST, consumes = MediaType.TEXT_PLAIN_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public Collection<Instance> getInstance(
+    public Collection<Instance> getInstances(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Json containing a collection of DB_IDs, and a class",
+                    description = "Json containing a collection of DB_IDs, and a collection of class names - both of the same size",
                     required = true,
-                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"className\" : \"PathwayDiagram\"}"))
-
+                    content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"classNames\" : [\"PathwayDiagram\"]}"))
             )
             @RequestBody String post) throws Exception {
         infoLogger.info("Fetch instances for a collection of DB_IDs");
@@ -224,7 +223,7 @@ public class CurationController {
         return instances;
     }
 
-    @Operation(summary = "Fetch instances by a list of quadruples: className, attributeName, operator and value")
+    @Operation(summary = "Fetch instances by a list of quadruples: className, attributeName, operator and value - returns max. 100 records")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -271,7 +270,7 @@ public class CurationController {
         return instances;
     }
 
-    @Operation(summary = "Load instance attribute values for a collection of DB_IDs and a collection of class-attribute name tuples")
+    @Operation(summary = "Load into memory instance attribute values for a collection of DB_IDs and a collection of class-attribute name tuples")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -343,7 +342,7 @@ public class CurationController {
         System.out.println(((GKInstance) instances.iterator().next()).getAttributes().keySet());
     }
 
-    @Operation(summary = "Load referrers to instances corresponding to collection of DB_IDs and a collection of attribute names")
+    @Operation(summary = "Load into memory referrers to instances corresponding to collection of DB_IDs and a collection of attribute names")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -437,7 +436,7 @@ public class CurationController {
     @RequestMapping(value = "/mint/dbid", method = RequestMethod.GET, produces = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
     public String mintNewDBID() throws Exception {
-        infoLogger.info("Request for the maximum DB_ID");
+        infoLogger.info("Request to mint a new DB_ID");
         return Long.toString(neo4JAdaptor.mintNewDBID());
     }
 
@@ -665,8 +664,8 @@ public class CurationController {
      *****************************/
 
     @Operation(summary =
-            "Stores instance with DB_ID = storeDbId and set updateAttribute another " +
-                    "instance (with DB_ID updateDbId) to the first instance. " +
+            "Stores instance with DB_ID = storeDbId and set it as value of updateAttribute in " +
+                    "another instance (with DB_ID updateDbId). " +
                     "An example of such operation can be found in CuratorTool " +
                     " in e.g. IdentifierDatabase.incrementMostRecentStableIdentifier()")
     @ApiResponses({
