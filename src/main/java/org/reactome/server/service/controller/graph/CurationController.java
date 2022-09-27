@@ -25,8 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 /**
- * @author Florian Korninger (florian.korninger@ebi.ac.uk)
- * @author Antonio Fabregat (fabregat@ebi.ac.uk)
+ * @author info@datasome.co.uk
  */
 @SuppressWarnings("unused")
 @RestController
@@ -97,14 +96,14 @@ public class CurationController {
         neo4JAdaptor.setUseCache(Boolean.parseBoolean(flag));
     }
 
-    @Operation(summary = "Check if cache is being used")
+    @Operation(summary = "Check if the instance cache is being used")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @RequestMapping(value = "/cache/isused", method = RequestMethod.GET)
     @ResponseBody
     public Boolean isCacheUsed() {
-        infoLogger.info("Request to check if cache is being used");
+        infoLogger.info("Request to check if the instance cache is being used");
         return neo4JAdaptor.isUseCache();
     }
 
@@ -127,7 +126,8 @@ public class CurationController {
     @ResponseBody
     public Collection<Long> fetchExistingDB_IDs(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Json containing a collection of DB_IDs, a flag to search cache, and a flag to search for intersection or disjunctive union of existing DB_Ids with the list provided",
+                    description = "Json containing a collection of DB_IDs, a flag to search cache, " +
+                            "and a flag to search for intersection or disjunctive union of existing DB_Ids with the list provided",
                     required = true,
                     content = @Content(examples = @ExampleObject("{ \"dbIds\" : [5263598], \"checkCache\" : \"true\", \"inverse\" : \"false\"}"))
 
@@ -429,7 +429,7 @@ public class CurationController {
 
     /************* Write/Update/Delete End-points ***************/
 
-    @Operation(summary = "Mint new DB_ID")
+    @Operation(summary = "Mint a new DB_ID")
     @ApiResponses({
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
