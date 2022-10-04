@@ -46,7 +46,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
     // Pause between each attempt to allow the other transaction to finish before trying again.
     int BACKOFF = 3000;
     // Fixed-size thread pool for loading values of attributes into AttributeValueCache
-    private static ExecutorService executorService = Executors.newFixedThreadPool(10);
+    private static ExecutorService executorService = Executors.newFixedThreadPool(20);
 
     private static final List<String> META_CYPHER_CHARS =
             Arrays.asList("\\[", "\\]", "\\(", "\\)", "\\?", "\\+", "\\*", "\\.");
@@ -346,7 +346,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 /* DEBUG
                 long timeElapsedSecs = (System.currentTimeMillis() - begin) / 1000;
                 if (timeElapsedSecs > 0) {
-                    System.out.println("All loadAllAttributeValues for " + instanceClassName + " completed in: " + timeElapsedSecs + "s"); // TODO: &&&&
+                    System.out.println("All loadAllAttributeValues for " + instanceClassName + " completed in: " + timeElapsedSecs + "s");
                 }
                  */
             }
