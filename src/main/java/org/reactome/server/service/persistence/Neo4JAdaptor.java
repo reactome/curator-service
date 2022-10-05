@@ -82,18 +82,6 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
         return database;
     }
 
-    public String getDBHost() {
-        return this.host;
-    }
-
-    public String getDBUser() {
-        return this.username;
-    }
-
-    public String getDBPwd() {
-        return this.password;
-    }
-
     public Schema fetchSchema() throws Exception {
         schema = new Neo4JSchemaParser().parseNeo4JResults(getClassNames("org.reactome.server.graph.curator.domain.model"));
         // Retrieve from Neo4J the timestamp for the current data model and set it in schema
