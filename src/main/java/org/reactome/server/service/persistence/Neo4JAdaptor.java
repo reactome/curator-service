@@ -46,7 +46,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
     // Pause between each attempt to allow the other transaction to finish before trying again.
     int BACKOFF = 3000;
     // Fixed-size thread pool for loading values of attributes into AttributeValueCache
-    private static ExecutorService executorService = Executors.newFixedThreadPool(20);
+    private static ExecutorService executorService = Executors.newFixedThreadPool(700);
 
     private static final List<String> META_CYPHER_CHARS =
             Arrays.asList("\\[", "\\]", "\\(", "\\)", "\\?", "\\+", "\\*", "\\.");
@@ -63,7 +63,6 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * @param uri     Database uri
      * @param username User name to connect to the database
      * @param password Password for the specified user name to connect to the database
-     * @param port     Database port
      */
     public Neo4JAdaptor(String uri, String username, String password) {
         driver = GraphDatabase.driver(uri, AuthTokens.basic(username, password));
@@ -97,7 +96,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
      * Reload everything from the database. The saved Schema will be not re-loaded.
      * The InstanceCache will be cleared.
      */
-    public void refresh() {
+    public void refreshCaches() {
         instanceCache.clear();
         attributeValuesCache.clear();
     }
@@ -258,7 +257,6 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
 
         // First load all the values for attributes and classes of instances - into  attributeValuesCache
         List<Future<?>> futures = new ArrayList();
-        long begin = System.currentTimeMillis();
         for (Iterator ii = instances.iterator(); ii.hasNext(); ) {
             GKInstance ins = (GKInstance) ii.next();
             String className = ins.getSchemClass().getName();
@@ -308,7 +306,8 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                     instanceAttributes.add(att);
                 }
             }
-            // Now construct Neo4J queries per each of the attribute groups in primitiveAttNames and instanceAttributes
+            // Now construct Neo4J queries per each of the attribute groups in
+            // primitiveAttributesWithSingleValue, primitiveAttributesWithMultipleValues and instanceAttributes
             Map<String, List<GKSchemaAttribute>> cypherQueries = new HashMap<>();
             // Primitive attributes with a single value
             StringBuilder queryRoot = new StringBuilder("MATCH (n:").append(ins.getSchemClass().getName()).append("{DB_ID:").append(ins.getDBID()).append("})");
@@ -347,6 +346,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
             }
 
             // Now run cypherQueries and collect results
+            // (or, if useAttributeValuesCache is true, retrieve them from attributeValuesCache instead)
             for (String query : cypherQueries.keySet()) {
                 List<GKSchemaAttribute> atts = cypherQueries.get(query);
                 try (Session session = driver.session(SessionConfig.forDatabase(this.database))) {
@@ -361,6 +361,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                             if (!atts.get(0).isInstanceTypeAttribute()) {
                                 // Primitive Single-value attributes
                                 if (result != null) {
+                                    // Cypher queries were run
                                     if (result.hasNext()) {
                                         Record rec = result.next();
                                         int i = 0;
@@ -374,6 +375,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                                         }
                                     }
                                 } else {
+                                    // Retrieve results from attributeValuesCache
                                     for (GKSchemaAttribute gkAtt : atts) {
                                         List<AttributeValueCache.AttValCacheRecord> values =
                                                 attributeValuesCache.getValues(instanceClassName, gkAtt.getName(), ins.getDBID());
@@ -383,6 +385,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                             } else {
                                 // Instance-type Single-value attributes
                                 if (result != null) {
+                                    // Cypher queries were run
                                     List<Record> results = result.list();
                                     if (results.size() > 0) {
                                         for (GKSchemaAttribute gkAtt : atts) {
@@ -399,6 +402,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                                         }
                                     }
                                 } else {
+                                    // Retrieve results from attributeValuesCache
                                     for (GKSchemaAttribute gkAtt : atts) {
                                         List<AttributeValueCache.AttValCacheRecord> attValCacheRecords =
                                                 attributeValuesCache.getValues(instanceClassName, gkAtt.getName(), ins.getDBID());
@@ -411,6 +415,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                             if (!atts.get(0).isInstanceTypeAttribute()) {
                                 // Primitive Multiple-value attributes
                                 if (result != null) {
+                                    // Cypher queries were run
                                     List<AttributeValueCache.AttValCacheRecord> attValCacheRecords = new ArrayList();
                                     for (GKSchemaAttribute gkAtt : atts) {
                                         while (result.hasNext()) {
@@ -421,6 +426,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                                         handleAttributeValue(ins, gkAtt, attValCacheRecords, recursive);
                                     }
                                 } else {
+                                    // Retrieve results from attributeValuesCache
                                     for (GKSchemaAttribute gkAtt : atts) {
                                         List<AttributeValueCache.AttValCacheRecord> attValCacheRecords =
                                                 attributeValuesCache.getValues(instanceClassName, gkAtt.getName(), ins.getDBID());
@@ -430,6 +436,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                             } else {
                                 // Instance-type Multiple-value attributes
                                 if (result != null) {
+                                    // Cypher queries were run
                                     List<AttributeValueCache.AttValCacheRecord> attValCacheRecords = new ArrayList();
                                     List<Record> results = result.list();
                                     for (GKSchemaAttribute gkAtt : atts) {
@@ -458,6 +465,7 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                                         handleAttributeValue(ins, gkAtt, attValCacheRecords, recursive);
                                     }
                                 } else {
+                                    // Retrieve results from attributeValuesCache
                                     for (GKSchemaAttribute gkAtt : atts) {
                                         List<AttributeValueCache.AttValCacheRecord> values =
                                                 attributeValuesCache.getValues(instanceClassName, gkAtt.getName(), ins.getDBID());
@@ -481,32 +489,23 @@ public class Neo4JAdaptor implements PersistenceAdaptor{
                 switch (typeAsInt) {
                     case SchemaAttribute.INSTANCE_TYPE:
                         SchemaClass attributeClass = (SchemaClass) att.getAllowedClasses().iterator().next();
-                        if (attValCacheRecords.size() > 1) {
-                            List<Instance> attrInstances = new ArrayList();
-                            for (AttributeValueCache.AttValCacheRecord rec : attValCacheRecords) {
-                                Value value = rec.getValue();
-                                SchemaClass valueSchemaClass = getSchema().getClassByName(rec.getSchemaClass());
-                                GKInstance instance;
-                                if (recursive) {
-                                    instance = getInflateInstance(value, valueSchemaClass);
-                                } else {
-                                    Long dbID = value.asLong();
-                                    instance = (GKInstance) getInstance(attributeClass.getName(), dbID);
-                                }
-                                attrInstances.add(instance);
-                            }
-                            ins.setAttributeValueNoCheck(att, attrInstances);
-                        } else {
-                            Value value = attValCacheRecords.get(0).getValue();
-                            SchemaClass valueSchemaClass = getSchema().getClassByName(attValCacheRecords.get(0).getSchemaClass());
+                        List<Instance> attrInstances = new ArrayList();
+                        for (AttributeValueCache.AttValCacheRecord rec : attValCacheRecords) {
+                            Value value = rec.getValue();
+                            SchemaClass valueSchemaClass = getSchema().getClassByName(rec.getSchemaClass());
                             GKInstance instance;
                             if (recursive) {
                                 instance = getInflateInstance(value, valueSchemaClass);
                             } else {
                                 Long dbID = value.asLong();
-                                instance = (GKInstance) getInstance(valueSchemaClass.getName(), dbID);
+                                instance = (GKInstance) getInstance(attributeClass.getName(), dbID);
                             }
-                            ins.setAttributeValueNoCheck(att, instance);
+                            attrInstances.add(instance);
+                        }
+                        if (attValCacheRecords.size() > 1) {
+                            ins.setAttributeValueNoCheck(att, attrInstances);
+                        } else {
+                            ins.setAttributeValueNoCheck(att, attrInstances.get(0));
                         }
                         break;
                     case SchemaAttribute.STRING_TYPE:

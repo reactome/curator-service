@@ -80,7 +80,7 @@ public class CurationController {
     @ResponseBody
     public void refreshCache() {
         infoLogger.info("Request to refresh the cache");
-        neo4JAdaptor.refresh();
+        neo4JAdaptor.refreshCaches();
     }
 
     @Operation(summary = "Set the use cache flag")
