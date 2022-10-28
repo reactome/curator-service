@@ -139,6 +139,19 @@ public class CurationController {
         Set<Long> existingDB_IDs = neo4JAdaptor.existing(postData.getDbIds(), postData.getCheckCache(), postData.getInverse());
         return existingDB_IDs;
     }
+    
+    @Operation(summary = "Fetch instance by DB_ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "500", description = "Internal Server Error")
+    })
+    @RequestMapping(value = "/instances/fetch/{DB_ID}", method = RequestMethod.GET)
+    @ResponseBody
+    public Instance fetchInstance(@Parameter(description = "DB_ID", example = "5263598", required = true)
+                            @PathVariable Long DB_ID
+    ) throws Exception {
+        infoLogger.info("Fetch instance by DB_ID");
+        return neo4JAdaptor.fetchInstance(Long.parseLong(String.valueOf(DB_ID)));
+    }
 
     @Operation(summary = "Fetch instances by a list of class names and, optionally, by a list of DB_IDs")
     @ApiResponses({
